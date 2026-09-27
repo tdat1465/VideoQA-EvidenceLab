@@ -26,4 +26,6 @@ The AKS smoke check compares wrapper output against the pinned upstream implemen
 
 Rechecked on 2026-09-27: all 13 CPU tests and Bash syntax passed; the actual `fetch-aks` command verified the pinned raw source hash, and all 20 AKS parity cases plus the constant/short-input guards passed.
 
+RAM staging update, 2026-09-27: **22/22 CPU tests passed** after adding download hash/range checks, interrupted-transfer retry and partial-transfer resume, split-only extraction, missing/duplicate video rejection, archive removal, provenance and refusal to download onto an ordinary disk filesystem. HTTP Range inspection of the real pinned NExTVideo ZIP fetched only 607,872 bytes of directory metadata, confirmed 5,440 unique MP4 stems and zero missing validation/test videos. The complete 24.25 GB archive was not downloaded on this workstation; its full hash will be checked in the allocated job. Requesting 192 GiB from Slurm is a proposed allocation, not a measured peak or a verified scheduler entitlement.
+
 Before collecting research results, run the documented two-question GPU pilot and inspect outputs. Then run the fixed 200-question validation subset; only after that commit to full-split evaluation or a claim of improvement.

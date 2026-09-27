@@ -10,9 +10,12 @@ Original code in this repository is MIT licensed. That license does not relicens
 | [CLIP ViT-B/32](https://huggingface.co/openai/clip-vit-base-patch32) | `3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268`; frozen cosine relevance scorer |
 | [ncTimTang/AKS](https://github.com/ncTimTang/AKS) | `b0b8a58fedf1d05d78151e2969cecde60e83721d`; runtime import of `frame_select.py` |
 | [NExT-QA annotations](https://github.com/doc-doc/NExT-QA) | `2432e9724f88ed9f40010e2989f104570a91de4e`; immutable CSV download |
+| [rhymes-ai/NeXTVideo](https://huggingface.co/datasets/rhymes-ai/NeXTVideo) | Third-party video mirror, `7e8ea8e056742292b95688d92a0773e05df00393`; RAM-only download, SHA256 checked before extraction |
 | [STAR](https://github.com/csbobby/STAR_Benchmark) | Annotation adapter verified against the official JSON schema on 2026-09-25 |
 | [A.I.R.](https://github.com/UCF-AIR/A.I.R.) | Conceptual inspiration; no code imported, no claim of reproducing its algorithm |
 
 AKS's inspected repository did not include a LICENSE file. Its source is not redistributed here. `fetch-aks` retrieves the exact upstream file into an ignored directory and verifies SHA256 `594557130aa702fb1c3eafae9df120514d36e9684443b415e0483dce14b4f149` (raw LF bytes; a Git checkout with CRLF conversion has a different hash). Consult the authors regarding reuse/redistribution terms. Short/constant sequence guards and small-budget settings are documented modifications of the evaluation wrapper, not original paper results.
 
 Molmo2 needs `trust_remote_code=True`; the immutable commit makes the executable source explicit. Review upstream licenses/model cards and dataset terms before use. No downloaded weights, external implementation, annotations or videos are included in this repository.
+
+NExTVideo archive SHA256: `2e3b1bc3e761122864b46fe3a1790b281301a6ed69de5ca1fceba17c504fa49c`, size 24,253,160,356 bytes. The hash is the pinned Hugging Face LFS SHA256; full bytes are verified by each GPU staging job. The mirror is also linked by [NVIDIA's dataset preparation notes](https://huggingface.co/datasets/nvidia/Nemotron-VLM-Dataset-v2/blob/main/nextqa/README.md). Original NExT-QA authors' video link remains in their official repository.
