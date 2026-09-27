@@ -1,7 +1,7 @@
 # Save a private copy outside the checkout; edit root if needed.
 export PERSIST_ROOT=/media/lnthanh03/DatHa
 export REPO_ROOT="$PERSIST_ROOT/code/VideoQA-EvidenceLab"
-export RUN_DIR="$PERSIST_ROOT/runs/videoqa/nextqa-val-uniform16-ram"
+export RUN_DIR="$PERSIST_ROOT/runs/videoqa/nextqa-val-uniform16-90g"
 export CONFIG_FILE=configs/molmo2_uniform16.json
 export DATA_MODE=nextqa_auto
 export DATASET=nextqa

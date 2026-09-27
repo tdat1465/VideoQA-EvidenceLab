@@ -40,7 +40,7 @@ Trên Windows dùng `.venv\Scripts\activate`. Demo tự tạo 12 câu **giả l�
 
 Hướng dẫn đúng môi trường trường học, lưu tạm trên RAM và Slurm: **[docs/SERVER.md](docs/SERVER.md)**.
 
-**Máy login thiếu ổ đĩa:** dùng hướng dẫn Slurm ở trên. Profile mới xin **192 GiB RAM hệ thống**, tự tải annotation và NExTVideo vào tmpfs của node GPU (`DATA_MODE=nextqa_auto`), chỉ giải nén split cần chạy rồi xóa ZIP. Model và môi trường Python cũng nằm trên RAM. Không cần chuẩn bị VIDEO_ARCHIVE trên login. Root ví dụ hiện là `/media/lnthanh03/DatHa`; kiểm tra giới hạn node/account trước khi submit. Dùng RUN_DIR mới khi chuyển từ code cũ sang bản RAM này.
+**Máy login thiếu ổ đĩa:** dùng hướng dẫn Slurm ở trên. Profile xin **90 GiB RAM hệ thống (~96,6 GB), 1 GPU trên một node trong gpu01/02/03**, loại gpu04. Submit bằng `python3 scripts/slurm/submit.py`; job tự tải annotation và NExTVideo vào tmpfs (`DATA_MODE=nextqa_auto`), chỉ giải nén split cần chạy rồi xóa ZIP. Model và môi trường Python cũng nằm trên RAM. Không cần chuẩn bị VIDEO_ARCHIVE trên login. Root là `/media/lnthanh03/DatHa`; dùng RUN_DIR mới khi chuyển từ code cũ sang bản này. Precision mặc định `auto`: native BF16 nếu có, ngược lại FP16; không yêu cầu A100.
 
 Các lệnh cài đặt thủ công dưới đây dành cho máy có không gian lưu trữ riêng; **không chạy chúng trên login của trường**. Trên máy Linux có GPU, đã cấp đúng 1 GPU và driver tương thích CUDA 12.6:
 

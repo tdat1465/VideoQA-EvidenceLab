@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=videoqa
 #SBATCH --partition=batch
-#SBATCH --nodelist=gpu03
+#SBATCH --exclude=gpu04
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=192G
+#SBATCH --mem=90G
 #SBATCH --time=2-00:00:00
 #SBATCH --signal=B:USR1@180
 #SBATCH --output=logs/%x-%j.out
@@ -16,6 +16,9 @@
 set -Eeuo pipefail
 umask 077
 : "${SLURM_JOB_ID:?Submit with sbatch, not directly on a login node}"
+# submit.py excludes other nodes before allocation; this is a final guard.
+NODE_NAME=${SLURMD_NODENAME:-$(hostname -s)}
+case "$NODE_NAME" in gpu01|gpu02|gpu03) ;; *) echo "Unsupported node: $NODE_NAME; use submit.py for gpu01-03 only"; exit 2;; esac
 : "${REPO_ROOT:?Set absolute checkout path}"
 : "${RUN_DIR:?Set absolute persistent output directory}"
 : "${CONFIG_FILE:?Set config path relative to checkout}"
@@ -113,7 +116,7 @@ run_child "$PY" -m pip install --no-cache-dir 'pip==25.2' 'setuptools==80.9.0' '
 run_child "$PY" -m pip install --no-cache-dir 'torch==2.8.0' 'torchvision==0.23.0' --index-url "$TORCH_INDEX"
 run_child "$PY" -m pip install --no-cache-dir -r "$TASK_RAM/repo/requirements-server.txt"
 run_child "$PY" -m pip install --no-build-isolation --no-deps -e "$TASK_RAM/repo"
-"$PY" -m evidencelab doctor
+"$PY" -m evidencelab doctor --config "$TASK_RAM/config.json"
 "$PY" -m pip freeze > "$RUN_DIR/environment.latest.txt"
 nvidia-smi > "$RUN_DIR/gpu.latest.txt"
 (( stop_requested == 0 )) || exit 75

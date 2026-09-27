@@ -21,5 +21,6 @@
   "aks_t2": -100.0,
   "aks_depth": 5,
   "prompt_version": "letter-score-v1",
-  "notes": "Synthetic mechanics only; never report as model accuracy."
+  "notes": "Synthetic mechanics only; never report as model accuracy.",
+  "dtype": "auto"
 }

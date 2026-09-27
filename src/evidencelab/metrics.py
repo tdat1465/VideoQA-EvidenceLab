@@ -37,6 +37,8 @@ def summarize(contract, results):
         flips["wrong_to_right"] += int(not initial_correct and row["correct"])
         flips["right_to_wrong"] += int(initial_correct and not row["correct"])
     return {"synthetic": contract["config"]["backend"] == "mock",
+            "resolved_dtype": contract.get("resolved_dtype"),
+            "nodes": sorted({r["execution"]["node"] for r in results if "execution" in r}),
             "complete": len(results) == contract["selected_count"],
             "selected_count": contract["selected_count"], "completed_count": len(results),
             "labelled_completed": len(labelled), "accuracy_completed": mean([r["correct"] for r in labelled]),
@@ -74,6 +76,8 @@ def compare(left: Path, right: Path, iterations=2000, seed=18):
         raise ValueError("iterations must be positive")
     a, ra = read_run(left)
     b, rb = read_run(right)
+    if a.get("resolved_dtype") != b.get("resolved_dtype"):
+        raise ValueError("Paired comparison requires the same resolved inference precision")
     if a["source_sha256"] != b["source_sha256"] or a["runtime"] != b["runtime"]:
         raise ValueError("Use the same source and runtime for paired experiments")
     if a["selected_ids_hash"] != b["selected_ids_hash"] or a["manifest_sha256"] != b["manifest_sha256"]:

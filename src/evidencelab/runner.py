@@ -10,6 +10,7 @@ from .backends import ClipScorer, HFBackend, MockBackend, MockScorer
 from .config import Config, source_fingerprint
 from .data import choose_subset, digest, file_hash, load_manifest
 from .metrics import export
+from .hardware import execution_profile
 from .pipeline import infer
 from .selectors import AKS_SHA256
 from .store import Store, run_lock
@@ -17,7 +18,7 @@ from .video import VideoReader
 
 
 def runtime_versions(mock=False):
-    result = {"python": platform.python_version()}
+    result = {"python": ".".join(platform.python_version_tuple()[:2])}
     if not mock:
         for name in ("torch", "torchvision", "transformers", "accelerate", "numpy", "Pillow", "av"):
             result[name] = importlib.metadata.version(name)
@@ -31,7 +32,9 @@ def run(config: Config, manifest: Path, video_root: Path, output: Path, resume=F
     selected = choose_subset(load_manifest(manifest), config.limit, config.seed)
     if config.method == "aks" and (aks_file is None or file_hash(aks_file) != AKS_SHA256):
         raise ValueError("Fetch the pinned AKS implementation and pass --aks-file")
-    contract = {"schema": 1, "config": config.contract(), "manifest_sha256": file_hash(manifest),
+    execution = execution_profile(config)
+    contract = {"schema": 2, "config": config.contract(), "manifest_sha256": file_hash(manifest),
+                "resolved_dtype": execution["resolved_dtype"],
                 "selected_ids_hash": digest(sorted(s.id for s in selected)), "selected_count": len(selected),
                 "source_sha256": source_fingerprint(), "runtime": runtime_versions(config.backend == "mock"),
                 "aks_sha256": AKS_SHA256 if config.method == "aks" else None}
@@ -59,7 +62,8 @@ def run(config: Config, manifest: Path, video_root: Path, output: Path, resume=F
                     needs_scorer = config.method in {"evidence", "aks", "clip_topk"}
                     scorer = (MockScorer() if mock else ClipScorer(config)) if needs_scorer else None
                     reader = None if mock else VideoReader(video_root, config.candidate_frames)
-                    store.event({"event": "session_start", "pending": len(pending), "resume": resume})
+                    store.event({"event": "session_start", "pending": len(pending), "resume": resume,
+                                 "execution": execution})
                     for sample in pending:
                         if stop or time.monotonic() - started >= max_seconds:
                             break
@@ -75,6 +79,7 @@ def run(config: Config, manifest: Path, video_root: Path, output: Path, resume=F
                         trace = infer(sample.public_question(), frames, times, config, backend, scorer, aks_file)
                         memory = backend.measurements()  # Synchronize CUDA before stopping timer.
                         result = {**trace, **memory, "elapsed_seconds": time.perf_counter() - begin,
+                                  "execution": execution,
                                   "id": sample.id, "video": sample.video, "dataset": sample.dataset,
                                   "split": sample.split, "question_type": sample.question_type,
                                   "answer": sample.answer,

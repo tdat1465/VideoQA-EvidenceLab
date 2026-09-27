@@ -29,18 +29,11 @@ def fetch_aks(output):
     output.write_bytes(content)
 
 
-def doctor():
-    import torch
+def doctor(config=None):
+    from .hardware import execution_profile
     from .runner import runtime_versions
-    details = {"runtime": runtime_versions(), "cuda_available": torch.cuda.is_available(),
-               "visible_gpus": torch.cuda.device_count(), "torch_cuda": torch.version.cuda}
-    if torch.cuda.is_available():
-        details.update(gpu=torch.cuda.get_device_name(0),
-                       vram_gib=torch.cuda.get_device_properties(0).total_memory/1024**3,
-                       native_bf16=torch.cuda.is_bf16_supported(including_emulation=False))
+    details = {"runtime": runtime_versions(), **execution_profile(config or Config())}
     print(json.dumps(details, indent=2))
-    if details["visible_gpus"] != 1 or not details.get("native_bf16"):
-        raise RuntimeError("Require one CUDA GPU with native BF16 support")
 
 
 def demo(output):
@@ -90,7 +83,8 @@ def main(argv=None):
     p.add_argument("--output", type=Path, default=Path("third_party/aks/frame_select.py"))
     p = sub.add_parser("demo")
     p.add_argument("--output", type=Path, required=True)
-    sub.add_parser("doctor")
+    p = sub.add_parser("doctor")
+    p.add_argument("--config", type=Path)
     args = parser.parse_args(argv)
     if args.command == "prepare":
         print(f"Prepared {prepare(args.dataset, args.annotations, args.video_root, args.split, args.output, args.mapping)} questions")
@@ -113,7 +107,7 @@ def main(argv=None):
         fetch_aks(args.output)
         print(f"Verified AKS {AKS_COMMIT}")
     elif args.command == "doctor":
-        doctor()
+        doctor(Config.load(args.config) if args.config else None)
     else:
         return demo(args.output)
     return 0

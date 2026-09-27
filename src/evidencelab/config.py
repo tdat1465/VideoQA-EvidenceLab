@@ -11,6 +11,7 @@ from .data import digest, file_hash
 @dataclass(frozen=True)
 class Config:
     backend: str = "molmo2"
+    dtype: str = "auto"
     model_id: str = "allenai/Molmo2-4B"
     revision: str = "042abfa7a38879a376cec03d949eff0aefaa0600"
     method: str = "uniform"
@@ -35,6 +36,8 @@ class Config:
     notes: str = field(default="", compare=False)
 
     def __post_init__(self):
+        if self.dtype not in {"auto", "bfloat16", "float16"}:
+            raise ValueError("dtype must be auto, bfloat16 or float16")
         if self.backend not in {"molmo2", "qwen", "mock"}:
             raise ValueError("backend must be molmo2, qwen or mock")
         if self.method not in {"uniform", "clip_topk", "aks", "evidence", "uniform_refine"}:

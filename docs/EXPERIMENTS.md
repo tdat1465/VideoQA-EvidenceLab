@@ -6,7 +6,7 @@ Với backbone đóng băng và pool 64 frame, lựa chọn bằng chứng phân
 
 ## Recipe cố định
 
-- Backbone mặc định Molmo2-4B BF16, SDPA, một GPU, không fine-tune. Không audio, subtitles hay scene graph. Đây là zero-shot **ở repo này**; không tuyên bố checkpoint chưa từng thấy benchmark trong dữ liệu huấn luyện.
+- Backbone mặc định Molmo2-4B, SDPA, một GPU, không fine-tune. `dtype=auto` chọn native BF16 nếu có, ngược lại FP16; báo precision thực tế và giữ nguyên giữa các baseline/paired runs. Không audio, subtitles hay scene graph. Đây là zero-shot **ở repo này**; không tuyên bố checkpoint chưa từng thấy benchmark trong dữ liệu huấn luyện.
 - Pool lấy mẫu theo thời gian trong các bin, tối đa 64 frame khác nhau. Video quá ngắn có thể ít frame hơn, mọi run phải ghi số thực tế.
 - Prompt yêu cầu chữ cái. Chấm bằng logits A–E ở bước sinh đầu, softmax trên các lựa chọn hợp lệ. Đây là **xác suất tương đối giữa lựa chọn**, không phải xác suất câu trả lời đúng đã calibration. Không chain-of-thought hoặc text parsing.
 - Molmo2 nhận video đã decode và timestamp thật qua metadata; không để processor tự lấy mẫu lại. Processor Molmo2 biểu diễn thời gian đến 0.1 giây; trace lưu timestamp gốc. Qwen tùy chọn nhận chuỗi ảnh có timestamp, cần được gọi là `multi-image` trong báo cáo. Các processor đều đặt `use_fast=False` tường minh.

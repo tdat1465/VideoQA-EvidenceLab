@@ -21,5 +21,6 @@
   "aks_t2": -100.0,
   "aks_depth": 4,
   "prompt_version": "letter-score-v1",
-  "notes": "AKS+CLIP transfer; depth=4 for a 16-frame budget."
+  "notes": "AKS+CLIP transfer; depth=4 for a 16-frame budget.",
+  "dtype": "auto"
 }

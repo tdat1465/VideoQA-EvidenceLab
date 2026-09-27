@@ -6,6 +6,7 @@ import math
 from collections import OrderedDict
 
 from .pipeline import Decision
+from .hardware import execution_profile
 
 
 def prompt(question):
@@ -26,10 +27,8 @@ class HFBackend:
     def __init__(self, config):
         import torch
         from transformers import AutoModelForImageTextToText, AutoProcessor
-        if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
-            raise RuntimeError("Require exactly one allocated CUDA GPU; do not set CUDA_VISIBLE_DEVICES yourself")
-        if not torch.cuda.is_bf16_supported(including_emulation=False):
-            raise RuntimeError("This configuration requires native BF16")
+        self.profile = execution_profile(config)
+        self.dtype = getattr(torch, self.profile["resolved_dtype"])
         self.torch, self.config = torch, config
         torch.manual_seed(config.seed)
         torch.cuda.manual_seed_all(config.seed)
@@ -38,7 +37,7 @@ class HFBackend:
                                                        trust_remote_code=config.backend == "molmo2")
         self.model = AutoModelForImageTextToText.from_pretrained(
             config.model_id, revision=config.revision, trust_remote_code=config.backend == "molmo2",
-            torch_dtype=torch.bfloat16, attn_implementation="sdpa", device_map={"": 0})
+            torch_dtype=self.dtype, attn_implementation="sdpa", device_map={"": 0})
         self.model.eval()
         self.model.requires_grad_(False)
         tokenizer = self.processor.tokenizer
@@ -80,7 +79,7 @@ class HFBackend:
             raise RuntimeError(f"Input has {tokens} tokens > configured cap {self.config.max_input_tokens}; "
                                "create a NEW run with a smaller frame budget, never silently truncate")
         inputs = inputs.to("cuda:0")
-        with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.inference_mode(), torch.autocast("cuda", dtype=self.dtype):
             result = self.model.generate(**inputs, max_new_tokens=1, do_sample=False,
                                          return_dict_in_generate=True, output_scores=True)
         logits = result.scores[0][0, self.letter_ids[:len(question.choices)]].float()
