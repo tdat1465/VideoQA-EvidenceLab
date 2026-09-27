@@ -1,0 +1,13 @@
+# Python 3.10-3.12. Install CUDA Torch separately (see Slurm bootstrap).
+# Proposed GPU environment; real A100 validation is still required.
+transformers==4.57.1
+accelerate==1.10.1
+huggingface-hub==0.35.3
+tokenizers==0.22.1
+safetensors==0.6.2
+numpy==2.2.6
+Pillow==11.3.0
+av==15.1.0
+einops==0.8.1
+sentencepiece==0.2.1
+pyarrow==21.0.0
