@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib.metadata
 import json
 import math
@@ -19,7 +20,8 @@ from .focus_adapter import BlipITMScorer, load_focus, select_focus
 from .hardware import execution_profile
 from .longvideo_config import FOCUS_REVISION, FOCUS_SHA256, LLAVA_REVISION, LongVideoConfig
 from .longvideo_data import (PARTS, SOURCE, HTTPRangeSource, MultipartReader, archive_index,
-                             cgroup_memory, fetch_annotations, fetch_video, parse_annotations)
+                             TRANSFER_CHUNK_BYTES, cgroup_memory, check_space,
+                             fetch_annotations, fetch_video, parse_annotations)
 from .metrics import export
 from .runner import runtime_versions
 from .selectors import uniform
@@ -90,6 +92,7 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
             old_handlers[number] = signal.signal(number, stop)
     started, processed = time.monotonic(), 0
     video, current_video, video_sha = None, None, None
+    reader, frames = None, None
     video_path = ram_root / "active-video.mp4"
     ram_root.mkdir(parents=True, exist_ok=True)
     try:
@@ -109,7 +112,8 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                         reader = MultipartReader(source)
                         print("Preparing tar index (first allocation only; metadata is persistent)", flush=True)
                         members = archive_index(reader, index_path, {s.video for s in selected})
-                        reader.block_size = 4 * 1024**2
+                        reader.clear_cache()
+                        reader.block_size = TRANSFER_CHUNK_BYTES
                         store.event({"event": "index_ready", "index_sha256": file_hash(index_path),
                                      "transferred_bytes": source.bytes_read})
                     if stopped:
@@ -124,7 +128,7 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                     scorer = BlipITMScorer(config) if config.method == "focus" and not mock else None
                     focus = load_focus(Path(__file__).parent / "_vendor/focus.py") if scorer else None
                     store.event({"event": "session_start", "execution": execution, "pending": len(pending)})
-                    for sample in pending:
+                    for sample_index, sample in enumerate(pending):
                         if stopped or time.monotonic() - started >= max_seconds:
                             break
                         if max_new_samples and processed >= max_new_samples:
@@ -147,6 +151,8 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                                 raise ValueError("Video bytes changed since previous session")
                             current_video = sample.video
                         backend.reset_peak()
+                        if not mock:
+                            check_space(ram_root, 0)
                         begin = time.perf_counter()
                         details = {"scorer_frame_evaluations": 0, "scorer_unique_frames": 0, "scorer_batches": 0}
                         if mock:
@@ -174,6 +180,8 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                             times = [i/fps for i in indices]
                             frames = [Image.fromarray(video[i].asnumpy()).convert("RGB") for i in indices]
                         backend.video_duration = duration
+                        if not mock:
+                            check_space(ram_root, 0)
                         decision = backend.answer(sample.public_question(), frames, times)
                         if len(decision.scores) != len(sample.choices):
                             raise ValueError("Answerer returned wrong number of choices")
@@ -193,6 +201,18 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                         frames = None
                         print(f"Committed {len(done)+processed}/{len(selected)}: {sample.id} "
                               f"({config.method}, {len(indices)} frames, {elapsed:.2f}s)", flush=True)
+                        if sample_index + 1 == len(pending) or pending[sample_index + 1].video != sample.video:
+                            # All selected questions for this source video are committed.
+                            # Close decoder before unlink, so tmpfs pages can be released.
+                            video = None
+                            gc.collect()
+                            video_path.unlink(missing_ok=True)
+                            if reader is not None:
+                                reader.clear_cache()
+                            current_video = None
+                            store.event({"event": "video_evicted", "video": sample.video,
+                                         "job_cgroup_memory": cgroup_memory()})
+                            print(f"Released RAM video: {sample.video}", flush=True)
                     store.event({"event": "session_end", "new_results": processed, "signals": stopped,
                                  "wall_seconds": time.monotonic()-started})
             except InterruptedError:
@@ -201,6 +221,13 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                 store.event({"event": "error", "type": type(error).__name__, "message": str(error)})
                 raise
             finally:
+                # Also release an unfinished video on pilot stop, cancellation or error,
+                # before exporting persistent reports.
+                frames, video = None, None
+                gc.collect()
+                if reader is not None:
+                    reader.clear_cache()
+                video_path.unlink(missing_ok=True)
                 try:
                     summary = export(output, contract, store.results())
                 finally:

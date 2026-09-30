@@ -28,6 +28,7 @@ PARTS = [(f"videos.tar.part.{suffix}", 5242880000) for suffix in
          ["a" + chr(i) for i in range(ord("a"), ord("z") + 1)] + ["ba", "bb", "bc", "bd"]]
 PARTS.append(("videos.tar.part.be", 4277780480))
 SOURCE = {"repo_id": DATASET_ID, "revision": DATASET_REVISION, "parts": PARTS}
+TRANSFER_CHUNK_BYTES = 4 * 1024**2
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,25 @@ class MultipartReader(io.RawIOBase):
             self.starts.append(self.starts[-1] + size)
         self.position = 0
         self.cached_start, self.cached_data = -1, b""
+        self.read_end = self.starts[-1]
+
+    def clear_cache(self):
+        self.cached_start, self.cached_data = -1, b""
+
+    @contextmanager
+    def window(self, offset, size):
+        """Bound requests to one member, including the last partial HTTP block."""
+        if offset < 0 or size < 0 or offset + size > self.starts[-1]:
+            raise ValueError("Invalid member range")
+        old_end = self.read_end
+        self.clear_cache()
+        self.read_end = offset + size
+        self.seek(offset)
+        try:
+            yield
+        finally:
+            self.clear_cache()
+            self.read_end = old_end
 
     def readable(self):
         return True
@@ -159,14 +179,15 @@ class MultipartReader(io.RawIOBase):
         if size < 0:
             raise ValueError("Unbounded archive reads are forbidden")
         output = bytearray()
-        remaining = min(size, max(0, self.starts[-1] - self.position))
+        remaining = min(size, max(0, self.read_end - self.position))
         while remaining:
             if not self.cached_start <= self.position < self.cached_start + len(self.cached_data):
                 part_id = bisect.bisect_right(self.starts, self.position) - 1
                 offset = self.position - self.starts[part_id]
                 name, part_size = self.parts[part_id]
                 self.cached_start = self.position
-                self.cached_data = self.source.read(name, offset, min(self.block_size, part_size-offset), part_size)
+                length = min(self.block_size, part_size-offset, self.read_end-self.position)
+                self.cached_data = self.source.read(name, offset, length, part_size)
             offset = self.position - self.cached_start
             chunk = self.cached_data[offset:offset+remaining]
             if not chunk:
@@ -238,33 +259,40 @@ def archive_index(reader, path, needed):
 
 
 def cgroup_memory(proc_path=Path("/proc/self/cgroup"), mount=Path("/sys/fs/cgroup")):
-    """Read this process's cgroup v2, never report host total as job allocation."""
+    """Read job cgroup v1/v2, never report host total as job allocation."""
     try:
         allocation = int(os.environ["SLURM_MEM_PER_NODE"]) * 1024**2
         for line in proc_path.read_text().splitlines():
-            if line.startswith("0::"):
-                suffix = line.split("::", 1)[1].lstrip("/")
+            _, controllers, group_path = line.split(":", 2)
+            version2 = line.startswith("0::")
+            if version2 or "memory" in controllers.split(","):
+                suffix = group_path.lstrip("/")
                 if ".." in Path(suffix).parts:
                     continue
-                leaf = mount / suffix
-                candidates = [leaf] + [p for p in leaf.parents if p == mount or mount in p.parents]
+                base = mount if version2 else mount / "memory"
+                names = (("memory.current", "memory.max", "memory.peak") if version2 else
+                         ("memory.usage_in_bytes", "memory.limit_in_bytes", "memory.max_usage_in_bytes"))
+                leaf = base / suffix
+                candidates = [leaf] + [p for p in leaf.parents if p == base or base in p.parents]
                 for root in candidates:
-                    if (root / "memory.current").exists():
-                        raw = (root / "memory.max").read_text().strip()
+                    if (root / names[0]).exists():
+                        raw = (root / names[1]).read_text().strip()
                         # A leaf may inherit its job's limit from an ancestor.
                         # Never call an unlimited/whole-node cgroup a job measurement.
                         if raw == "max" or not 0 < int(raw) <= allocation:
                             continue
-                        return {"current_bytes": int((root / "memory.current").read_text()),
+                        return {"current_bytes": int((root / names[0]).read_text()),
                                 "limit_bytes": int(raw),
-                                "peak_bytes": int((root / "memory.peak").read_text())
-                                if (root / "memory.peak").exists() else None}
+                                "peak_bytes": int((root / names[2]).read_text())
+                                if (root / names[2]).exists() else None}
     except (OSError, ValueError, KeyError):
         pass
     return {}
 
 
 def check_space(root, incoming, max_video_bytes=8 * 1024**3, reserve=6 * 1024**3):
+    if incoming < 0:
+        raise ValueError("Negative incoming byte count")
     if incoming > max_video_bytes:
         raise MemoryError("Single video exceeds 8 GiB guard; no fallback to persistent disk")
     if shutil.disk_usage(root).free < incoming + reserve:
@@ -273,27 +301,37 @@ def check_space(root, incoming, max_video_bytes=8 * 1024**3, reserve=6 * 1024**3
     if memory.get("limit_bytes") is not None:
         if memory["limit_bytes"] - memory["current_bytes"] < incoming + reserve:
             raise MemoryError("Insufficient cgroup RAM headroom")
+    return memory
 
 
 def fetch_video(reader, entry, path, stop=lambda: False, guard=True):
     offset, size = entry
+    if path.exists():
+        raise FileExistsError("Release the active video before fetching another")
     if guard:
         check_space(path.parent, size)
-    reader.seek(offset)
     h = hashlib.sha256()
     partial = path.with_suffix(".partial")
     try:
-        with partial.open("wb") as output:
+        with reader.window(offset, size), partial.open("wb", buffering=0) as output:
             remaining = size
             while remaining:
                 if stop():
                     raise InterruptedError("Stop requested during video download")
-                block = reader.read(min(4 * 1024**2, remaining))
+                if guard:
+                    # Existing tmpfs bytes are already charged to the cgroup;
+                    # reserve space only for the bytes still to arrive.
+                    check_space(path.parent, remaining)
+                block = reader.read(min(TRANSFER_CHUNK_BYTES, remaining))
                 if not block:
                     raise EOFError("Video data truncated")
-                output.write(block)
+                if output.write(block) != len(block):
+                    raise OSError("Short write while staging video in RAM")
                 h.update(block)
                 remaining -= len(block)
+                del block
+            if guard:
+                check_space(path.parent, 0)
         os.replace(partial, path)
     finally:
         partial.unlink(missing_ok=True)

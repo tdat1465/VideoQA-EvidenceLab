@@ -4,6 +4,15 @@ This repository is an experimental implementation. CPU mechanics tests are separ
 
 ## LongVideoBench integration — 2026-09-30
 
+Streaming follow-up: **41/41 CPU tests passed** after adding per-chunk memory guards,
+exact member ranges (no read-ahead into the next video), immediate eviction after
+the last question for a video, decoder/cache cleanup before report export, and
+cgroup v1 support. New tests simulate memory pressure after the first transfer
+chunk, verify removal of partial bytes/cache, and verify 6-GiB reserve enforcement
+against the job limit even when the host tmpfs has hundreds of GiB free.
+The Slurm script now rejects allocations above 90 GiB. Bash syntax passed.
+This is not a measured GPU-job peak or an end-to-end authenticated HF transfer test.
+
 **36/36 CPU tests passed** on Windows, Python 3.12.14, including the existing real PyAV
 decode test. New tests exercise the unmodified, SHA-verified FOCUS algorithm on an
 18,000-frame synthetic timeline with a deterministic relevance scorer, exact tar/PAX

@@ -15,7 +15,7 @@ from evidencelab.focus_adapter import blip_caption, load_focus, question_seed, s
 from evidencelab.longvideo import run
 from evidencelab.longvideo_config import LongVideoConfig
 from evidencelab.longvideo_data import (HTTPRangeSource, MultipartReader, archive_index, cgroup_memory,
-                                      fetch_video, parse_annotations)
+                                      check_space, fetch_video, parse_annotations)
 from evidencelab.metrics import compare
 from evidencelab.store import read_run
 
@@ -38,6 +38,63 @@ class MemorySource:
 
 
 class LongVideoDataTests(unittest.TestCase):
+    def test_cgroup_v1_memory_includes_job_usage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proc, mount = root / "proc", root / "cgroup"
+            job = mount / "memory/slurm/job123"
+            job.mkdir(parents=True)
+            proc.write_text("5:cpu,cpuacct:/slurm/job123\n6:memory:/slurm/job123\n")
+            (job / "memory.usage_in_bytes").write_text(str(50 * 1024**3))
+            (job / "memory.limit_in_bytes").write_text(str(90 * 1024**3))
+            (job / "memory.max_usage_in_bytes").write_text(str(60 * 1024**3))
+            with patch.dict("os.environ", {"SLURM_MEM_PER_NODE": str(90*1024)}):
+                self.assertEqual(cgroup_memory(proc, mount),
+                                 {"current_bytes": 50*1024**3, "limit_bytes": 90*1024**3,
+                                  "peak_bytes": 60*1024**3})
+
+    def test_stream_does_not_prefetch_next_video_and_clears_cache(self):
+        source = MemorySource({"part": b"before" + b"CURRENT" + b"do not download next video"})
+        reader = MultipartReader(source, [("part", len(source.chunks["part"]))], block_size=1024)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.mp4"
+            fetch_video(reader, [6, 7], path, guard=False)
+            self.assertEqual(path.read_bytes(), b"CURRENT")
+            self.assertEqual(source.requests, [("part", 6, 7)])
+            self.assertEqual(reader.cached_data, b"")
+            with self.assertRaises(FileExistsError):
+                fetch_video(reader, [6, 7], path, guard=False)
+
+    def test_ram_pressure_during_transfer_aborts_and_removes_partial(self):
+        source = MemorySource({"part": b"a" * 24})
+        reader = MultipartReader(source, [("part", 24)], block_size=8)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.mp4"
+            # Start with room; after the first block another allocation in this
+            # job consumes headroom. Do not read or retain the remaining blocks.
+            with patch("evidencelab.longvideo_data.TRANSFER_CHUNK_BYTES", 8), \
+                 patch("evidencelab.longvideo_data.check_space",
+                       side_effect=[{}, {}, MemoryError("RAM pressure")]) as guard:
+                with self.assertRaisesRegex(MemoryError, "RAM pressure"):
+                    fetch_video(reader, [0, 24], path)
+            self.assertEqual([call.args[1] for call in guard.call_args_list], [24, 24, 16])
+            self.assertEqual(len(source.requests), 1)
+            self.assertFalse(path.exists())
+            self.assertFalse(path.with_suffix(".partial").exists())
+            self.assertEqual(reader.cached_data, b"")
+
+    def test_memory_guard_reserves_ram_for_model_and_decode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("evidencelab.longvideo_data.shutil.disk_usage",
+                       return_value=types.SimpleNamespace(free=500*1024**3)), \
+                 patch("evidencelab.longvideo_data.cgroup_memory",
+                       return_value={"current_bytes": 83*1024**3, "limit_bytes": 90*1024**3}):
+                check_space(Path(tmp), 1024**3)
+                with self.assertRaisesRegex(MemoryError, "cgroup"):
+                    check_space(Path(tmp), 2*1024**3)
+                with self.assertRaisesRegex(MemoryError, "8 GiB"):
+                    check_space(Path(tmp), 9*1024**3)
+
     def test_cgroup_reports_job_limit_never_unlimited_node_memory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -184,6 +241,26 @@ class FocusTests(unittest.TestCase):
 
 
 class LongVideoResumeTests(unittest.TestCase):
+    def test_pilot_releases_active_video_before_export(self):
+        from evidencelab.backends import MockBackend
+        from evidencelab.metrics import export
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            annotation_path = root / "val.json"
+            annotation_path.write_text(json.dumps([annotation(i) for i in range(3)]))
+            config = LongVideoConfig(backend="mock", method="uniform", limit=0)
+            active = root / "ram/active-video.mp4"
+            original = MockBackend.answer
+            def answer(self, *args):
+                active.write_bytes(b"temporary video")
+                return original(self, *args)
+            def report(*args):
+                self.assertFalse(active.exists())
+                return export(*args)
+            with patch.object(MockBackend, "answer", answer), patch("evidencelab.longvideo.export", report):
+                self.assertEqual(run(config, annotation_path, root / "ram", root / "run",
+                                     root / "index.json", max_new_samples=1), 75)
+
     def test_resume_pairing_and_reject_model_config_or_data_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -16,6 +16,10 @@
 set -Eeuo pipefail
 umask 077
 : "${SLURM_JOB_ID:?Submit with sbatch, not directly on a login node}"
+: "${SLURM_MEM_PER_NODE:?Job must have an explicit per-node memory allocation}"
+[[ "$SLURM_MEM_PER_NODE" =~ ^[0-9]+$ ]] && (( SLURM_MEM_PER_NODE <= 92160 )) || {
+  echo 'This workflow requires at most 90 GiB (96.6 GB) of allocated RAM'; exit 2;
+}
 # submit.py excludes other nodes before allocation; this is a final guard.
 NODE_NAME=${SLURMD_NODENAME:-$(hostname -s)}
 case "$NODE_NAME" in gpu01|gpu02|gpu03) ;; *) echo "Unsupported node: $NODE_NAME; use submit.py for gpu01-03 only"; exit 2;; esac

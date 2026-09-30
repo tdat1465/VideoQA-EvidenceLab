@@ -4,9 +4,17 @@ Workflow mới: **LongVideoBench validation, video-only, không phụ đề/audi
 Giữ nguyên các run NExT-QA đã hoàn tất và checkout cũ để có thể tiếp tục các run cũ khi cần.
 Mỗi job vẫn dùng **1 GPU, 8 CPU, 90 GiB RAM, tối đa 48 giờ**, chỉ gpu01/gpu02/gpu03.
 
+Luồng streaming: **Hugging Face → các khối HTTP Range tối đa 4 MiB → một video trong
+tmpfs → xử lý các câu hỏi của video → đóng decoder, xóa video và bộ đệm → video tiếp theo**.
+Không tải trước video kế tiếp. FOCUS cần seek ngẫu nhiên nên giữ nguyên video đang dùng
+đến khi xử lý hết các câu của nó; không thể xóa từng khối file trước khi FOCUS đọc xong.
+Chỉ metadata/index, code và kết quả nhỏ nằm trên ổ bền vững.
+
+Nếu đã triển khai bản trước, xem [lệnh cập nhật streaming](UPDATE_STREAMING.md).
+
 ## 1. Đưa code mới lên server
 
-Bản bàn giao có file `VideoQA-EvidenceLab-focus.bundle` chứa commit mới dựa trên
+Bản bàn giao có file `VideoQA-EvidenceLab-focus-stream.bundle` chứa commit mới dựa trên
 `ccbafcad3a008f31450aa78ef54b397258807ade`. Đây là Git bundle chỉ chứa code, không có dataset/model.
 **Chưa cần `git pull`; bundle không có nghĩa code đã được push lên GitHub.**
 
@@ -14,7 +22,7 @@ Chạy trong **PowerShell trên máy Windows**, dùng cùng địa chỉ SSH b�
 (thay `login01` bằng hostname/IP thực tế nếu tên này chỉ phân giải trong mạng trường):
 
 ```powershell
-scp "E:\Codex\Documents\ChatGPT\KLTN\VideoQA-EvidenceLab-focus.bundle" lnthanh03@login01:/media/lnthanh03/DatHa/code/
+scp "E:\Codex\Documents\ChatGPT\KLTN\VideoQA-EvidenceLab-focus-stream.bundle" lnthanh03@login01:/media/lnthanh03/DatHa/code/
 ```
 
 Sau đó chạy trên **login01** để tạo checkout riêng. Không yêu cầu checkout cũ sạch;
@@ -26,7 +34,7 @@ file untracked `1` nếu còn sẽ không bị xóa hoặc chép vào checkout m
   export PERSIST_ROOT=/media/lnthanh03/DatHa
   OLD_REPO="$PERSIST_ROOT/code/VideoQA-EvidenceLab"
   NEW_REPO="$PERSIST_ROOT/code/VideoQA-EvidenceLab-focus"
-  BUNDLE="$PERSIST_ROOT/code/VideoQA-EvidenceLab-focus.bundle"
+  BUNDLE="$PERSIST_ROOT/code/VideoQA-EvidenceLab-focus-stream.bundle"
 
   git -C "$OLD_REPO" cat-file -e ccbafcad3a008f31450aa78ef54b397258807ade^{commit}
   git -C "$OLD_REPO" bundle verify "$BUNDLE"
@@ -222,10 +230,16 @@ nếu đã dùng 200 câu để chọn phương pháp/siêu tham số; cần ghi
   này trùng mọi sampling/prompt/subtitle/scoring setting của lmms-eval trong paper.
 - Thời gian suy luận gồm decode, chọn frame/BLIP và VLM. Tải video + hash được báo riêng;
   tải/nạp model và lập index không được tính là latency suy luận. Peak VRAM allocated là
-  số PyTorch ghi, khác tổng `nvidia-smi`. Cgroup RAM chỉ có khi hệ thống cung cấp cgroup v2.
+  số PyTorch ghi, khác tổng `nvidia-smi`. Đọc RAM từ cgroup v1/v2 của job khi có
+  giới hạn hữu hạn phù hợp với allocation; không lấy số liệu toàn node làm RAM của job.
 - Archive chính thức gồm 31 phần (~150,47 GiB). HTTP Range chỉ đọc header để lập index,
   sau đó tải từng video cần dùng. Một video xong mới chuyển video tiếp; không tải/ghép cả tar.
   Kiểm tra Content-Range, giới hạn video 8 GiB, dự phòng tmpfs/cgroup 6 GiB, không fallback disk.
+  Kiểm tra lại headroom trước mỗi khối tải, sau khi tải và trước decode/VLM.
+  Bộ đệm đọc không vượt sang video kế tiếp và được xóa sau tải. Khi gặp lỗi/stop,
+  phần `.partial` được dọn; video hiện tại được giải phóng trước khi xuất báo cáo.
+  Log `Released RAM video: ...` và event `video_evicted` xác nhận bước dọn cuối mỗi video.
+  Nếu không đọc được cgroup, chỉ đo được tmpfs; không coi đây là xác nhận peak RAM tổng.
   Không tự giảm giới hạn 90 GiB dựa trên VRAM.
 - **Chưa chạy full-model trên GPU trường cho workflow mới.** Cần pilot thực tế để xác minh
   VRAM, decode video dài, quyền tải và HTTP Range qua mạng compute node. Tập dữ liệu có gate
