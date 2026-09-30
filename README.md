@@ -1,8 +1,19 @@
 # VideoQA-EvidenceLab
 
-Thử nghiệm **cải tiến lúc suy luận** cho video multiple-choice QA trên **1 GPU, ngân sách khoảng 32 GB VRAM, mỗi phiên 48 giờ**. Backbone mặc định: **Molmo2-4B đóng băng**. Dataset: **NExT-QA MC** và **STAR**. Không cần huấn luyện lại hoặc dịch vụ API trả phí.
+Thử nghiệm **cải tiến lúc suy luận** cho video multiple-choice QA trên **1 GPU, ngân sách khoảng 32 GB VRAM, mỗi phiên 48 giờ**. Backbone mặc định: **Molmo2-4B đóng băng**. Dataset đang nghiên cứu: **NExT-QA MC** và **LongVideoBench validation**. Adapter STAR cũ được giữ để đọc lại thí nghiệm, không còn là mục tiêu chạy mới. Không cần huấn luyện lại hoặc dịch vụ API trả phí.
 
-Repo này triển khai một **giả thuyết nghiên cứu cần kiểm chứng**, chưa có kết quả GPU hay tuyên bố SOTA. Khung chạy tham khảo kinh nghiệm Slurm/RAM/resume từ [tdat1465/DyGEnc](https://github.com/tdat1465/DyGEnc). DyGEnc đang dùng AGQA và scene graph; repo mới dùng video gốc, không dùng checkpoint/graph ground truth của DyGEnc.
+Repo này triển khai một **giả thuyết nghiên cứu cần kiểm chứng**, không có tuyên bố SOTA. Người dùng đã chạy baseline NExT-QA Uniform-16 + Molmo2-4B trên A100, đạt 173/200 câu (86,5%); đây là kết quả mẫu 200 câu, không phải full-split. Khung chạy tham khảo kinh nghiệm Slurm/RAM/resume từ [tdat1465/DyGEnc](https://github.com/tdat1465/DyGEnc). DyGEnc đang dùng AGQA và scene graph; repo mới dùng video gốc, không dùng checkpoint/graph ground truth của DyGEnc.
+
+## FOCUS trên LongVideoBench
+
+Đã bổ sung Uniform-64/FOCUS-64 cho **Molmo2-4B** và **LLaVA-Video-7B-Qwen2**.
+Xem [hướng dẫn server trường](docs/LONGVIDEOBENCH.md). Dùng **video-only validation**, mặc định
+200 câu cố định, `limit: 0` cho đủ 1.337 câu. Chấm logits A–E; FOCUS chạy trên toàn timeline
+với BLIP-large ITM. Đây là tích hợp cần pilot GPU, không phải tuyên bố tái lập số liệu paper.
+
+Workflow mới chỉ giữ một video trong RAM; không tải toàn bộ archive khoảng 150,47 GiB.
+Các cấu hình `lvb_*.json` dùng entrypoint `python -m evidencelab.longvideo` và
+`submit.py --workflow longvideo`. Không đưa chúng vào runner NExT-QA cũ.
 
 ## Phương án đang triển khai
 
@@ -21,7 +32,7 @@ Repo này triển khai một **giả thuyết nghiên cứu cần kiểm chứng
 | `molmo2_evidence16.json` | 8 → 16 khung theo bằng chứng | Giả thuyết cần kiểm chứng |
 | `qwen25_uniform16.json` | Qwen2.5-VL-7B, chuỗi ảnh có timestamp | Backbone bổ sung, cần pilot VRAM riêng |
 
-Mọi cấu hình thật mặc định chọn cùng **200 câu** bằng seed/ID, pool tối đa **64 khung**, CLIP chạy CPU để nhường VRAM cho VLM. `limit: 0` chạy cả split; đổi cấu hình phải tạo run mới. Khung đầu vào đã được thu nhỏ cạnh dài tối đa 448 px. Protocol này khác recipe đánh giá gốc của từng paper.
+Các cấu hình NExT-QA phía trên mặc định chọn cùng **200 câu** bằng seed/ID, pool tối đa **64 khung**, CLIP chạy CPU để nhường VRAM cho VLM. `limit: 0` chạy cả split; đổi cấu hình phải tạo run mới. Khung đầu vào đã được thu nhỏ cạnh dài tối đa 448 px. Protocol này khác recipe đánh giá gốc của từng paper. Workflow LongVideoBench/FOCUS có giao thức riêng được mô tả trong tài liệu liên kết ở trên.
 
 ## Chạy thử không cần GPU
 

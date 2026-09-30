@@ -39,6 +39,7 @@ def main():
     p.add_argument("--account")
     p.add_argument("--test-only", action="store_true")
     p.add_argument("--parsable", action="store_true")
+    p.add_argument("--workflow", choices=["standard", "longvideo"], default="standard")
     a = p.parse_args()
     repo = Path(__file__).resolve().parents[2]
     os.environ.setdefault("REPO_ROOT", str(repo))
@@ -47,7 +48,8 @@ def main():
     nodes = {line.strip() for line in info.stdout.splitlines() if line.strip()}
     args = submission_args(nodes, a.partition, a.node, a.account, a.test_only, a.parsable)
     (repo / "logs").mkdir(exist_ok=True)
-    return subprocess.run(args + ["--chdir=" + str(repo), str(repo / "scripts/slurm/job.sh")], cwd=repo).returncode
+    script = "longvideo_job.sh" if a.workflow == "longvideo" else "job.sh"
+    return subprocess.run(args + ["--chdir=" + str(repo), str(repo / "scripts/slurm" / script)], cwd=repo).returncode
 
 
 if __name__ == "__main__":

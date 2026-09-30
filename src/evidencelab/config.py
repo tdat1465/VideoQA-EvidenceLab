@@ -79,5 +79,5 @@ def source_fingerprint() -> str:
     root = Path(__file__).resolve().parent
     files = sorted(root.rglob("*.py"))
     repo = root.parent.parent
-    extra = [repo / "requirements-server.txt", repo / "pyproject.toml"]
+    extra = sorted(repo.glob("requirements*.txt")) + [repo / "pyproject.toml"]
     return digest([(p.relative_to(repo).as_posix(), file_hash(p)) for p in files + extra if p.exists()])

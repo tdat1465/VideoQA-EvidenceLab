@@ -25,9 +25,12 @@ def summarize(contract, results):
         groups[r["question_type"]].append(r["correct"])
     category = {key: {"n": len(values), "accuracy": mean(values)} for key, values in sorted(groups.items())}
     nextqa = defaultdict(list)
+    durations = defaultdict(list)
     for r in labelled:
         if r["dataset"] == "nextqa":
             nextqa[r["question_type"][:1].upper()].append(r["correct"])
+        if r["dataset"] == "longvideobench":
+            durations[r["duration_group"]].append(r["correct"])
     latency = [r["elapsed_seconds"] for r in results]
     vram = [r["peak_vram_allocated_gib"] for r in results if r["peak_vram_allocated_gib"] is not None]
     flips = {"wrong_to_right": 0, "right_to_wrong": 0}
@@ -45,6 +48,8 @@ def summarize(contract, results):
             "per_type": category,
             "macro_type_accuracy": mean([v["accuracy"] for v in category.values()]),
             "nextqa_CTD": {k: {"n": len(v), "accuracy": mean(v)} for k, v in sorted(nextqa.items())},
+            "longvideobench_duration_groups": {k: {"n": len(v), "accuracy": mean(v)}
+                                               for k, v in sorted(durations.items())},
             "latency_mean_seconds": mean(latency), "latency_p50_seconds": percentile(latency, .5),
             "latency_p95_seconds": percentile(latency, .95), "measured_question_seconds": sum(latency),
             "mean_input_tokens": mean([r["input_tokens"] for r in results]),
@@ -53,7 +58,14 @@ def summarize(contract, results):
             "mean_final_frames": mean([r["final_frames"] for r in results]),
             "refinement_rate": mean([r["refined"] for r in results]), "answer_changes": flips,
             "peak_vram_allocated_gib": max(vram) if vram else None,
-            "timing_scope": "video verification/decode + selection + all answer calls; excludes model load/download"}
+            "mean_scorer_frame_evaluations": mean([r.get("scorer_frame_evaluations") for r in results]),
+            "mean_selection_seconds": mean([r.get("selection_seconds") for r in results]),
+            "video_transfer_hash_seconds": sum(r.get("video_transfer_hash_seconds", 0) for r in results),
+            "video_download_bytes": sum(r.get("video_download_bytes", 0) for r in results),
+            "peak_job_cgroup_gib": max((r.get("job_cgroup_memory", {}).get("peak_bytes") or 0
+                                        for r in results), default=0) / 1024**3 or None,
+            "timing_scope": contract.get("timing_scope", "video verification/decode + selection + all answer calls; "
+                                         "excludes model load/download")}
 
 
 def export(directory: Path, contract, results):
@@ -85,16 +97,24 @@ def compare(left: Path, right: Path, iterations=2000, seed=18):
     for key in ("backend", "model_id", "revision", "prompt_version", "max_image_pixels", "candidate_frames"):
         if a["config"][key] != b["config"][key]:
             raise ValueError(f"Backbone/protocol mismatch: {key}")
+    for key in ("protocol", "vision_id", "vision_revision", "max_input_tokens"):
+        if a["config"].get(key) != b["config"].get(key):
+            raise ValueError(f"Backbone/protocol mismatch: {key}")
     if len(ra) != a["selected_count"] or len(rb) != b["selected_count"]:
         raise ValueError("Complete both runs before paired comparison")
     by_id = {r["id"]: r for r in rb}
     clusters = defaultdict(lambda: [0, 0])
+    changes = {"wrong_to_right": [], "right_to_wrong": []}
     for r in ra:
         if r["answer"] is None:
             raise ValueError("Paired accuracy requires labels for every selected question")
         other = by_id[r["id"]]
         if r["answer"] != other["answer"]:
             raise ValueError("Labels differ")
+        if r.get("video_sha256") != other.get("video_sha256"):
+            raise ValueError("Video bytes differ between paired runs")
+        if r["correct"] != other["correct"]:
+            changes["wrong_to_right" if other["correct"] else "right_to_wrong"].append(r["id"])
         # Bootstrap whole source videos, not correlated questions independently.
         group = clusters[(r["dataset"], r["video"])]
         group[0] += int(other["correct"]) - int(r["correct"])
@@ -105,6 +125,7 @@ def compare(left: Path, right: Path, iterations=2000, seed=18):
         draws = rng.choices(values, k=len(values))
         bootstrap.append(sum(x[0] for x in draws)/sum(x[1] for x in draws))
     return {"synthetic": a["config"]["backend"] == "mock", "videos": len(values), "questions": len(ra),
+            "paired_changes": changes,
             "delta_accuracy_right_minus_left": sum(x[0] for x in values)/len(ra),
             "video_cluster_bootstrap_95_ci": [percentile(bootstrap, .025), percentile(bootstrap, .975)],
             "left": summarize(a, ra), "right": summarize(b, rb)}

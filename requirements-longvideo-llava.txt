@@ -1,0 +1,16 @@
+# Separate environment: official LLaVA-NeXT code uses the older generation API.
+# CUDA torch==2.8.0 and torchvision==0.23.0 are installed by the job script.
+transformers==4.45.1
+accelerate==1.10.1
+huggingface-hub==0.35.3
+tokenizers==0.20.3
+safetensors==0.6.2
+numpy==1.26.4
+Pillow==11.3.0
+av==15.1.0
+einops==0.8.1
+sentencepiece==0.2.1
+decord==0.6.0
+scipy==1.15.3
+requests==2.32.5
+protobuf==5.29.5
