@@ -8,7 +8,7 @@ HTTP Range đọc khối tối đa 4 MiB và không đọc sang video kế tiế
 ## Chuyển gói code mới từ Windows
 
 Gói mới bao gồm cả tích hợp FOCUS trước đó và cập nhật streaming, dựa trên commit
-`ccbafcad3a008f31450aa78ef54b397258807ade`. Chưa push lên GitHub.
+`ccbafcad3a008f31450aa78ef54b397258807ade`. Code cũng có trên nhánh GitHub `codex/focus-longvideobench`.
 
 ```powershell
 scp "E:\Codex\Documents\ChatGPT\KLTN\VideoQA-EvidenceLab-focus-stream.bundle" lnthanh03@login01:/media/lnthanh03/DatHa/code/
@@ -29,12 +29,12 @@ cả Uniform và FOCUS để các cặp so sánh cùng code/protocol.
   export PERSIST_ROOT=/media/lnthanh03/DatHa
   REPO="$PERSIST_ROOT/code/VideoQA-EvidenceLab-focus"
   BUNDLE="$PERSIST_ROOT/code/VideoQA-EvidenceLab-focus-stream.bundle"
-  git -C "$REPO" bundle verify "$BUNDLE"
+  # Có thể bỏ qua bundle và lấy code trực tiếp từ GitHub như lệnh fetch bên dưới.
   if ! git -C "$REPO" diff --quiet || ! git -C "$REPO" diff --cached --quiet; then
     echo 'Checkout có thay đổi chưa commit; giữ lại và kiểm tra trước khi cập nhật.'
     exit 1
   fi
-  git -C "$REPO" fetch "$BUNDLE" codex/focus-longvideobench
+  git -C "$REPO" fetch https://github.com/tdat1465/VideoQA-EvidenceLab.git codex/focus-longvideobench
   git -C "$REPO" switch --detach FETCH_HEAD
   git -C "$REPO" log -1 --oneline
 )

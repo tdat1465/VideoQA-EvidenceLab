@@ -14,19 +14,9 @@ Nếu đã triển khai bản trước, xem [lệnh cập nhật streaming](UPDA
 
 ## 1. Đưa code mới lên server
 
-Bản bàn giao có file `VideoQA-EvidenceLab-focus-stream.bundle` chứa commit mới dựa trên
-`ccbafcad3a008f31450aa78ef54b397258807ade`. Đây là Git bundle chỉ chứa code, không có dataset/model.
-**Chưa cần `git pull`; bundle không có nghĩa code đã được push lên GitHub.**
-
-Chạy trong **PowerShell trên máy Windows**, dùng cùng địa chỉ SSH bạn đang dùng để vào trường
-(thay `login01` bằng hostname/IP thực tế nếu tên này chỉ phân giải trong mạng trường):
-
-```powershell
-scp "E:\Codex\Documents\ChatGPT\KLTN\VideoQA-EvidenceLab-focus-stream.bundle" lnthanh03@login01:/media/lnthanh03/DatHa/code/
-```
-
-Sau đó chạy trên **login01** để tạo checkout riêng. Không yêu cầu checkout cũ sạch;
-file untracked `1` nếu còn sẽ không bị xóa hoặc chép vào checkout mới.
+Code được cung cấp trên nhánh GitHub `codex/focus-longvideobench`.
+Trên **login01**, tạo checkout riêng bằng block dưới đây. Nếu đã có checkout FOCUS,
+block chỉ đọc trạng thái và yêu cầu kiểm tra trước khi cập nhật; không ghi đè.
 
 ```bash
 (
@@ -34,18 +24,15 @@ file untracked `1` nếu còn sẽ không bị xóa hoặc chép vào checkout m
   export PERSIST_ROOT=/media/lnthanh03/DatHa
   OLD_REPO="$PERSIST_ROOT/code/VideoQA-EvidenceLab"
   NEW_REPO="$PERSIST_ROOT/code/VideoQA-EvidenceLab-focus"
-  BUNDLE="$PERSIST_ROOT/code/VideoQA-EvidenceLab-focus-stream.bundle"
-
-  git -C "$OLD_REPO" cat-file -e ccbafcad3a008f31450aa78ef54b397258807ade^{commit}
-  git -C "$OLD_REPO" bundle verify "$BUNDLE"
   if [ -e "$NEW_REPO" ]; then
-    echo "Checkout mới đã tồn tại: $NEW_REPO. Kiểm tra git status ở đó; không tạo chồng."
+    git -C "$NEW_REPO" status --short
+    git -C "$NEW_REPO" log -1 --oneline
+    echo "Checkout đã tồn tại; xem docs/UPDATE_STREAMING.md trước khi cập nhật."
     exit 1
   fi
-  git -C "$OLD_REPO" fetch "$BUNDLE" codex/focus-longvideobench
+  git -C "$OLD_REPO" fetch https://github.com/tdat1465/VideoQA-EvidenceLab.git codex/focus-longvideobench
   git -C "$OLD_REPO" worktree add --detach "$NEW_REPO" FETCH_HEAD
   git -C "$NEW_REPO" log -1 --oneline
-  git -C "$NEW_REPO" status --short
 )
 ```
 
