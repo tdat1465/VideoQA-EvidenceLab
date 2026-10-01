@@ -63,19 +63,47 @@ không ghép run MoLab cu128 với run trường cu126 trong comparator hiện t
 
 ## 2. Setup Molmo2
 
+Chạy setup nền, ghi log vào file để tránh đưa toàn bộ output pip vào cell. Cách này
+không khắc phục container bị thu hồi/hết RAM, nhưng tách quá trình setup khỏi giao diện.
+Không chạy lại cell nếu setup trước vẫn đang hoạt động.
+
 ```python
+import os as _os
 import subprocess as _sp
 import sys as _sys
+from pathlib import Path as _Path
 
-_sp.run([
-    _sys.executable, str(MOLAB_REPO / "scripts/molab.py"), "setup",
-    "--config", str(MOLAB_REPO / "configs/lvb_molmo2_lens64.json")
-], check=True)
+_work = _Path("/marimo/videoqa-molab")
+_work.mkdir(exist_ok=True)
+_env = _os.environ.copy()
+_env.update(PIP_PROGRESS_BAR="off", PIP_DISABLE_PIP_VERSION_CHECK="1", PYTHONUNBUFFERED="1")
+with (_work / "setup.log").open("a") as _log:
+    _process = _sp.Popen([
+        _sys.executable, "-u", str(MOLAB_REPO / "scripts/molab.py"), "setup",
+        "--config", str(MOLAB_REPO / "configs/lvb_molmo2_lens64.json")
+    ], env=_env, stdin=_sp.DEVNULL, stdout=_log, stderr=_sp.STDOUT, start_new_session=True)
+print("Setup PID:", _process.pid)
+```
+
+Xem tiến độ bằng cell riêng:
+
+```python
+from pathlib import Path as _Path
+_log = _Path("/marimo/videoqa-molab/setup.log")
+with _log.open("rb") as _file:
+    _file.seek(max(0, _log.stat().st_size - 12000))
+    print(_file.read().decode(errors="replace"))
 ```
 
 Chờ `Setup complete` và doctor xác nhận GPU/precision. Bước này kiểm tra quyền dataset và
 HTTP Range trước khi tải Torch; model weights tải ở bước run. Setup đã xong được tái sử dụng.
 Lỗi setup có thể chạy lại cùng cell; không xóa kết quả cũ để sửa lỗi cài đặt.
+
+Wheel Linux decord 0.6.0 có tên `py3-none` nhưng WHEEL nội bộ ghi
+`cp36-cp36m-manylinux2010_x86_64`. Setup chỉ chấp nhận đúng thông báo pip check
+về metadata này trên Linux x86_64, với đúng phiên bản/tag, khi không có lỗi khác.
+Sau đó bắt buộc tạo video nhỏ bằng PyAV và kiểm tra decord giải mã đúng frame/nội dung.
+Không chỉnh metadata hoặc bỏ qua các lỗi dependency khác.
 
 ## 3. Pilot 2 câu chạy nền
 
@@ -217,7 +245,7 @@ Có config 8 ảnh tương ứng. Không thay ngân sách giữa pilot và resum
 
 ## Kiểm chứng
 
-55 tests CPU, gồm cgroup v1 namespace giống output người dùng, soft budget 90 trên limit160,
+56 tests CPU, gồm cgroup v1 namespace giống output người dùng, soft budget 90 trên limit160,
 giữ nguyên guard Slurm/tmpfs, snapshot SQLite với transaction chưa commit, bỏ secret/video,
 restore và resume đủ câu, từ chối path traversal. Chưa thực thi installer hoặc full-model
 GPU trong tài khoản MoLab của người dùng; pilot là bước xác nhận thực tế.

@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -17,6 +18,20 @@ from test_longvideo import annotation
 
 
 class MolabTests(unittest.TestCase):
+    def test_decord_exception_only_accepts_exact_known_metadata_issue(self):
+        script = Path(__file__).resolve().parents[1] / 'scripts/check_molab_dependencies.py'
+        spec = importlib.util.spec_from_file_location('molab_dependencies_test', script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        result = subprocess.CompletedProcess([], 1, 'decord 0.6.0 is not supported on this platform\n', '')
+        args = ('0.6.0', 'Tag: cp36-cp36m-manylinux2010_x86_64\n', 'Linux', 'x86_64')
+        self.assertTrue(module.known_decord_tag_mismatch(result, *args))
+        result.stdout += 'torch has incompatible numpy\n'
+        self.assertFalse(module.known_decord_tag_mismatch(result, *args))
+        result.stdout = 'decord 0.6.0 is not supported on this platform\n'
+        self.assertFalse(module.known_decord_tag_mismatch(result, '0.6.0', 'Tag: different', 'Linux', 'x86_64'))
+        self.assertFalse(module.known_decord_tag_mismatch(result, *args[:-1], 'aarch64'))
+
     def test_namespace_cgroup_limit_160_gib_without_slurm(self):
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"EVIDENCELAB_EXECUTION": "molab"}):
             root = Path(temp)

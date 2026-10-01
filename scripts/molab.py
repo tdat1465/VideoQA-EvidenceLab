@@ -153,7 +153,7 @@ def setup(workspace, backend, config):
             child([py, REPO / "scripts/fetch_llava_source.py", "--target", root / "llava"], env, stop_file, deadline)
         child(pip + ["--no-build-isolation", "--no-deps", "-e", root / "llava"], env, stop_file, deadline)
         child([py, REPO / "scripts/smoke_llava_cpu.py"], env, stop_file, deadline)
-    child([py, "-m", "pip", "check"], env, stop_file, deadline)
+    child([py, REPO / "scripts/check_molab_dependencies.py"], env, stop_file, deadline)
     child([py, "-m", "evidencelab.longvideo", "doctor", "--config", config], env, stop_file, deadline)
     info["ready"] = True
     atomic_json(state, info)
