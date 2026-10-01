@@ -53,7 +53,12 @@ def summarize(contract, results):
             "latency_mean_seconds": mean(latency), "latency_p50_seconds": percentile(latency, .5),
             "latency_p95_seconds": percentile(latency, .95), "measured_question_seconds": sum(latency),
             "mean_input_tokens": mean([r["input_tokens"] for r in results]),
-            "mean_vlm_calls": mean([len(r["calls"]) for r in results]),
+            "mean_vlm_calls": mean([len(r["calls"]) + r.get("auxiliary_vlm_calls", 0) for r in results]),
+            "mean_auxiliary_vlm_calls": mean([r.get("auxiliary_vlm_calls", 0) for r in results]),
+            "mean_auxiliary_input_tokens": mean([r.get("auxiliary_input_tokens", 0) for r in results]),
+            "mean_source_frame_presentations": mean([r.get("source_frame_presentations", r["frame_presentations"])
+                                                    for r in results]),
+            "lens_ratio_fallbacks": sum(r.get("lens_ratio_fallback", False) for r in results),
             "mean_frame_presentations": mean([r["frame_presentations"] for r in results]),
             "mean_final_frames": mean([r["final_frames"] for r in results]),
             "refinement_rate": mean([r["refined"] for r in results]), "answer_changes": flips,

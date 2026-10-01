@@ -86,6 +86,21 @@ class HFBackend:
         probabilities = torch.softmax(logits, dim=-1).cpu().tolist()
         return Decision(probabilities, tokens)
 
+    def generate_text(self, text, max_new_tokens=16):
+        """Text-only auxiliary call for LENS allocation; never receives labels."""
+        torch = self.torch
+        messages = [{"role": "user", "content": [{"type": "text", "text": text}]}]
+        rendered = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        inputs = self.processor(text=[rendered], return_tensors="pt").to("cuda:0")
+        count = int(inputs["input_ids"].shape[-1])
+        if count + max_new_tokens > self.config.max_input_tokens:
+            raise ValueError("LENS allocation prompt exceeds input budget")
+        with torch.inference_mode(), torch.autocast("cuda", dtype=self.dtype):
+            output = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        generated = output[0, count:]
+        return {"text": self.processor.tokenizer.decode(generated, skip_special_tokens=True),
+                "input_tokens": count, "output_tokens": int(generated.numel())}
+
     def reset_peak(self):
         self.torch.cuda.synchronize()
         self.torch.cuda.reset_peak_memory_stats()

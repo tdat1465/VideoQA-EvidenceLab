@@ -17,6 +17,11 @@ Các cấu hình `lvb_*.json` dùng entrypoint `python -m evidencelab.longvideo`
 
 ## Phương án đang triển khai
 
+**LENS trên LongVideoBench:** đã có adapter cho Molmo2/LLaVA, ngân sách 8/64 ảnh,
+cùng Uniform/FOCUS để đối chiếu. Xem [hướng dẫn LENS và khác biệt so với upstream](docs/LENS.md).
+Tính cả lượt LLM phân bổ, frame nguồn trong hyperframe và chi phí BLIP/CLIP/SSIM.
+Chưa có kết quả GPU LENS; bản này cần pilot riêng và RUN_DIR mới.
+
 1. Lấy 8 khung hình đều, chạy VLM và tính xác suất tương đối của các lựa chọn A–E.
 2. Nếu chênh lệch hai lựa chọn đầu nhỏ hơn ngưỡng: dùng CLIP tìm khung phân biệt hai lựa chọn, thêm ngữ cảnh trước/sau trong ngân sách tối đa 16 khung.
 3. Chạy VLM thêm một lần trên tập khung đã mở rộng. Ghi cả hai lần gọi, token, thời gian và đỉnh VRAM.

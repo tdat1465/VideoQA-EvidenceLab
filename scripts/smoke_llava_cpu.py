@@ -38,6 +38,13 @@ def main():
                              use_cache=False, return_dict=True).last_hidden_state
         logits = model.lm_head(hidden[:, -1, :]).float()
         torch.testing.assert_close(logits, result.scores[0])
+        # LENS allocator uses the upstream text-only wrapper. Confirm that it
+        # returns only generated IDs, so the adapter must not strip prompt IDs.
+        text_ids = torch.tensor([[1, 4, 5]])
+        text_result = model.generate(text_ids, attention_mask=torch.ones_like(text_ids),
+                                     images=None, modalities=["text"], max_new_tokens=2,
+                                     min_new_tokens=2, do_sample=False, pad_token_id=2)
+        assert text_result.shape == (1, 2)
     print("PASS: LLaVA video expansion; last-position logits match one-token generation (tiny CPU model)")
 
 

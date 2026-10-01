@@ -31,7 +31,8 @@ from .store import Store, atomic_json, run_lock
 def longvideo_runtime(config):
     result = runtime_versions(config.backend == "mock")
     if config.backend != "mock":
-        for name in ("decord", "scipy", "huggingface-hub", "tokenizers", "requests", "safetensors"):
+        for name in ("decord", "scipy", "huggingface-hub", "tokenizers", "requests", "safetensors",
+                     "opencv-python-headless", "ftfy"):
             result[name] = importlib.metadata.version(name)
     if config.backend == "llava_video":
         import llava
@@ -58,7 +59,8 @@ def make_trace(decision, indices, times, config, details):
         raise ValueError("Invalid option probabilities")
     call = {**asdict(decision), "frame_indices": indices, "timestamps": times}
     return {"method": config.method, "prediction": decision.prediction, "scores": scores,
-            "calls": [call], "input_tokens": decision.input_tokens, "frame_presentations": len(indices),
+            "calls": [call], "input_tokens": decision.input_tokens + details.get("auxiliary_input_tokens", 0),
+            "answer_input_tokens": decision.input_tokens, "frame_presentations": len(indices),
             "final_frames": len(indices), "refined": False, "initial_margin": decision.margin,
             "frame_index_space": "source-video", **details}
 
@@ -81,7 +83,7 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                 "source_sha256": source_fingerprint(), "runtime": longvideo_runtime(config),
                 "dataset_source": SOURCE, "annotation_sha256": file_hash(annotations),
                 "focus_revision": FOCUS_REVISION, "focus_sha256": FOCUS_SHA256,
-                "timing_scope": "video decode + frame selection/BLIP + answer; excludes model loading, "
+                "timing_scope": "video decode + selection (including LENS allocation/BLIP/CLIP/SSIM) + answer; excludes model loading, "
                                 "archive indexing and video transfer/hash (recorded separately)"}
     old_handlers, stopped = {}, []
     def stop(signum, frame):
@@ -127,6 +129,10 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                         backend = HFBackend(config)
                     scorer = BlipITMScorer(config) if config.method == "focus" and not mock else None
                     focus = load_focus(Path(__file__).parent / "_vendor/focus.py") if scorer else None
+                    lens = None
+                    if config.method == "lens" and not mock:
+                        from .lens_adapter import LensSelector
+                        lens = LensSelector(config, ram_root, stop=lambda: bool(stopped))
                     store.event({"event": "session_start", "execution": execution, "pending": len(pending)})
                     for sample_index, sample in enumerate(pending):
                         if stopped or time.monotonic() - started >= max_seconds:
@@ -172,13 +178,16 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                             select_start = time.perf_counter()
                             if config.method == "focus":
                                 indices, details = select_focus(video, sample.public_question(), config, scorer, focus)
+                            elif config.method == "lens":
+                                indices, frames, details = lens.select(video, sample.public_question(), backend)
                             else:
                                 indices = uniform(len(video), config.frames)
                             # Account for asynchronous CUDA scoring before reporting selector time.
                             backend.torch.cuda.synchronize()
                             details["selection_seconds"] = time.perf_counter()-select_start
                             times = [i/fps for i in indices]
-                            frames = [Image.fromarray(video[i].asnumpy()).convert("RGB") for i in indices]
+                            if config.method != "lens":
+                                frames = [Image.fromarray(video[i].asnumpy()).convert("RGB") for i in indices]
                         backend.video_duration = duration
                         if not mock:
                             check_space(ram_root, 0)

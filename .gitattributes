@@ -6,3 +6,4 @@
 *.md text eol=lf
 # Runtime verifies these exact unmodified upstream bytes on every platform.
 src/evidencelab/_vendor/focus.py -text -whitespace
+src/evidencelab/_vendor/lens/** -text -whitespace

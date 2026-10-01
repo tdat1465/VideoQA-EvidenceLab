@@ -16,7 +16,11 @@ vqa = "evidencelab.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-evidencelab = ["_vendor/*.txt"]
+evidencelab = ["_vendor/*.txt", "_vendor/lens/manifest.json", "_vendor/lens/LICENSE",
+              "_vendor/lens/API_CLIP/clip_prs/LICENSE.txt", "_vendor/lens/API_CLIP/clip_prs/README.md",
+              "_vendor/lens/API_CLIP/clip_prs/environment.yml",
+              "_vendor/lens/API_CLIP/clip_prs/utils/model_configs/*.json",
+              "_vendor/lens/API_CLIP/clip_prs/utils/vocab/*.gz"]
 
 [tool.ruff]
 line-length = 110

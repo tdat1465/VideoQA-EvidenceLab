@@ -1,0 +1,12 @@
+{
+  "backend": "molmo2",
+  "model_id": "allenai/Molmo2-4B",
+  "revision": "042abfa7a38879a376cec03d949eff0aefaa0600",
+  "method": "uniform",
+  "frames": 8,
+  "limit": 200,
+  "seed": 18,
+  "selector_seed": 42,
+  "dtype": "auto",
+  "max_input_tokens": 20000
+}

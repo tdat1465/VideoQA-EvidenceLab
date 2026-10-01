@@ -72,6 +72,25 @@ class LlavaVideoBackend:
             self.letter_ids.append(ids[0])
         self.video_duration = None
 
+    def generate_text(self, text, max_new_tokens=16):
+        from llava.conversation import conv_templates
+        torch = self.torch
+        conversation = copy.deepcopy(conv_templates["qwen_1_5"])
+        conversation.append_message(conversation.roles[0], text)
+        conversation.append_message(conversation.roles[1], None)
+        inputs = self.tokenizer(conversation.get_prompt(), return_tensors="pt").to("cuda:0")
+        count = int(inputs["input_ids"].shape[-1])
+        if count + max_new_tokens > self.config.max_input_tokens:
+            raise ValueError("LENS allocation prompt exceeds input budget")
+        with torch.inference_mode(), torch.autocast("cuda", dtype=self.dtype):
+            # Official LLaVA generates from inputs_embeds, so returned IDs are
+            # new tokens only (unlike HFBackend's input_ids generation).
+            output = self.model.generate(inputs["input_ids"], attention_mask=inputs["attention_mask"],
+                                         images=None, modalities=["text"],
+                                         max_new_tokens=max_new_tokens, do_sample=False)
+        return {"text": self.tokenizer.decode(output[0], skip_special_tokens=True),
+                "input_tokens": count, "output_tokens": int(output.shape[-1])}
+
     def answer(self, question, frames, times):
         import numpy as np
         from llava.constants import DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX
