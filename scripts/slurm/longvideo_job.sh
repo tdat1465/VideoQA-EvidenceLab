@@ -125,7 +125,7 @@ if [[ "$BACKEND" = llava_video ]]; then
   run_child "$PY" -m pip install --no-build-isolation --no-deps -e "$TASK_RAM/llava"
   run_child "$PY" "$TASK_RAM/repo/scripts/smoke_llava_cpu.py"
 fi
-"$PY" -m pip check
+run_child "$PY" "$TASK_RAM/repo/scripts/check_longvideo_dependencies.py"
 "$PY" -m evidencelab.longvideo doctor --config "$TASK_RAM/config.json"
 "$PY" -m pip freeze > "$RUN_DIR/environment.latest.txt"
 nvidia-smi > "$RUN_DIR/gpu.latest.txt"

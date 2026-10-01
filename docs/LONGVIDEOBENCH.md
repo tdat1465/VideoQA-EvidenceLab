@@ -1,6 +1,15 @@
 # Chạy FOCUS với Molmo2 và LLaVA trên server trường
 
 Workflow mới: **LongVideoBench validation, video-only, không phụ đề/audio**.
+
+Sửa lỗi setup decord cho Slurm: nhánh `codex/slurm-decord-fix` (dựa trên bản LENS
+`68011a9`, gồm cả FOCUS và Uniform). Wheel decord 0.6.0 trên Linux có tag nội bộ
+`cp36-cp36m` khác tên wheel `py3-none`, làm `pip check` dừng trên Python 3.10/3.12.
+Script chỉ chấp nhận đúng thông báo/tag/version này trên Linux x86_64 khi không có
+lỗi dependency khác, rồi bắt buộc thử giải mã video nhỏ bằng decord. Không sửa metadata.
+Mọi file kiểm tra nằm trong RAM của job. Đây là sửa bước setup, không đổi mô hình,
+config, code suy luận hoặc giao thức chấm. Nếu job cũ dừng trước khi có journal,
+thử lại với `RESUME=0`; giữ nguyên thư mục kết quả cũ để kiểm tra.
 Giữ nguyên các run NExT-QA đã hoàn tất và checkout cũ để có thể tiếp tục các run cũ khi cần.
 Mỗi job vẫn dùng **1 GPU, 8 CPU, 90 GiB RAM, tối đa 48 giờ**, chỉ gpu01/gpu02/gpu03.
 
