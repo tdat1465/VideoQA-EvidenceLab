@@ -261,7 +261,8 @@ def archive_index(reader, path, needed):
 def cgroup_memory(proc_path=Path("/proc/self/cgroup"), mount=Path("/sys/fs/cgroup")):
     """Read job cgroup v1/v2, never report host total as job allocation."""
     try:
-        allocation = int(os.environ["SLURM_MEM_PER_NODE"]) * 1024**2
+        notebook = os.environ.get("EVIDENCELAB_EXECUTION") == "molab"
+        allocation = (2**60 if notebook else int(os.environ["SLURM_MEM_PER_NODE"]) * 1024**2)
         for line in proc_path.read_text().splitlines():
             _, controllers, group_path = line.split(":", 2)
             version2 = line.startswith("0::")
@@ -298,6 +299,13 @@ def check_space(root, incoming, max_video_bytes=8 * 1024**3, reserve=6 * 1024**3
     if shutil.disk_usage(root).free < incoming + reserve:
         raise MemoryError("Insufficient free tmpfs space")
     memory = cgroup_memory()
+    if os.environ.get("EVIDENCELAB_EXECUTION") == "molab":
+        if not memory:
+            raise RuntimeError("MoLab requires readable finite container cgroup memory accounting")
+        # A userspace budget, not a claim that we changed the container's limit.
+        effective = min(memory["limit_bytes"], 90 * 1024**3)
+        if effective - memory["current_bytes"] < incoming + reserve:
+            raise MemoryError("Insufficient MoLab RAM headroom within the 90 GiB software budget")
     if memory.get("limit_bytes") is not None:
         if memory["limit_bytes"] - memory["current_bytes"] < incoming + reserve:
             raise MemoryError("Insufficient cgroup RAM headroom")

@@ -45,12 +45,17 @@ def longvideo_runtime(config):
 
 
 def validate_ram_root(path):
-    if not os.environ.get("SLURM_JOB_ID"):
+    notebook = os.environ.get("EVIDENCELAB_EXECUTION") == "molab"
+    if not notebook and not os.environ.get("SLURM_JOB_ID"):
         raise RuntimeError("Run real LongVideoBench jobs inside a Slurm allocation")
+    if notebook and os.environ.get("SLURM_JOB_ID"):
+        raise RuntimeError("Use the Slurm profile on the university cluster")
     path.mkdir(parents=True, exist_ok=True)
     filesystem = subprocess.check_output(["findmnt", "-n", "-o", "FSTYPE", "--target", str(path)], text=True).strip()
     if filesystem != "tmpfs":
         raise RuntimeError("Video/weights/cache root must be tmpfs; persistent disk fallback is forbidden")
+    if notebook:
+        check_space(path, 0)
 
 
 def make_trace(decision, indices, times, config, details):
@@ -78,6 +83,7 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
             raise ValueError("Pinned LongVideoBench validation must have 1337 questions")
     execution = execution_profile(config)
     contract = {"schema": 3, "config": config.contract(), "resolved_dtype": execution["resolved_dtype"],
+                "execution_platform": os.environ.get("EVIDENCELAB_EXECUTION", "slurm"),
                 "manifest_sha256": digest({"annotation_sha256": file_hash(annotations), "source": SOURCE}),
                 "selected_ids_hash": digest(sorted(s.id for s in selected)), "selected_count": len(selected),
                 "source_sha256": source_fingerprint(), "runtime": longvideo_runtime(config),

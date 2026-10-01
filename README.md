@@ -6,6 +6,9 @@ Repo này triển khai một **giả thuyết nghiên cứu cần kiểm chứng
 
 ## FOCUS trên LongVideoBench
 
+**MoLab/marimo:** xem [hướng dẫn notebook GPU](docs/MOLAB.md) cho profile Python 3.12 +
+Torch cu128, streaming và backup/resume. Không dùng lệnh Slurm trên MoLab.
+
 Đã bổ sung Uniform-64/FOCUS-64 cho **Molmo2-4B** và **LLaVA-Video-7B-Qwen2**.
 Xem [hướng dẫn server trường](docs/LONGVIDEOBENCH.md). Dùng **video-only validation**, mặc định
 200 câu cố định, `limit: 0` cho đủ 1.337 câu. Chấm logits A–E; FOCUS chạy trên toàn timeline
