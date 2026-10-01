@@ -32,7 +32,7 @@ def longvideo_runtime(config):
     result = runtime_versions(config.backend == "mock")
     if config.backend != "mock":
         for name in ("decord", "scipy", "huggingface-hub", "tokenizers", "requests", "safetensors",
-                     "opencv-python-headless", "ftfy"):
+                     "opencv-python-headless", "ftfy", "regex"):
             result[name] = importlib.metadata.version(name)
     if config.backend == "llava_video":
         import llava
