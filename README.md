@@ -1,5 +1,7 @@
 # VideoQA-EvidenceLab
 
+LongVideoBench AKS/FOCUS/Uniform/LENS: [hướng dẫn nhiều job Slurm](docs/AKS_FOCUS_SUITE.md).
+
 Thử nghiệm **cải tiến lúc suy luận** cho video multiple-choice QA trên **1 GPU, ngân sách khoảng 32 GB VRAM, mỗi phiên 48 giờ**. Backbone mặc định: **Molmo2-4B đóng băng**. Dataset đang nghiên cứu: **NExT-QA MC** và **LongVideoBench validation**. Adapter STAR cũ được giữ để đọc lại thí nghiệm, không còn là mục tiêu chạy mới. Không cần huấn luyện lại hoặc dịch vụ API trả phí.
 
 Repo này triển khai một **giả thuyết nghiên cứu cần kiểm chứng**, không có tuyên bố SOTA. Người dùng đã chạy baseline NExT-QA Uniform-16 + Molmo2-4B trên A100, đạt 173/200 câu (86,5%); đây là kết quả mẫu 200 câu, không phải full-split. Khung chạy tham khảo kinh nghiệm Slurm/RAM/resume từ [tdat1465/DyGEnc](https://github.com/tdat1465/DyGEnc). DyGEnc đang dùng AGQA và scene graph; repo mới dùng video gốc, không dùng checkpoint/graph ground truth của DyGEnc.

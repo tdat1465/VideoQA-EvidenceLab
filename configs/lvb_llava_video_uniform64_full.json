@@ -1,0 +1,12 @@
+{
+  "backend": "llava_video",
+  "model_id": "lmms-lab/LLaVA-Video-7B-Qwen2",
+  "revision": "013210b3aff822f1558b166d39c1046dd109520f",
+  "method": "uniform",
+  "frames": 64,
+  "limit": 0,
+  "seed": 18,
+  "selector_seed": 42,
+  "dtype": "auto",
+  "max_input_tokens": 20000
+}

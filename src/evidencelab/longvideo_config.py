@@ -43,8 +43,8 @@ class LongVideoConfig:
     def __post_init__(self):
         if self.backend not in {"molmo2", "llava_video", "mock"}:
             raise ValueError("LongVideoBench backend must be molmo2, llava_video or mock")
-        if self.method not in {"uniform", "focus", "lens"}:
-            raise ValueError("LongVideoBench method must be uniform, focus or lens")
+        if self.method not in {"uniform", "aks", "focus", "lens"}:
+            raise ValueError("LongVideoBench method must be uniform, aks, focus or lens")
         if self.lens_implementation != "upstream-lazy-1fps-ssim32-v1":
             raise ValueError("Unknown LENS implementation")
         if self.dtype not in {"auto", "bfloat16", "float16"}:

@@ -235,7 +235,7 @@ class FocusTests(unittest.TestCase):
 
     def test_every_shipped_config_valid(self):
         configs = list((Path(__file__).parents[1] / "configs").glob("lvb_*.json"))
-        self.assertEqual(len(configs), 12)
+        self.assertEqual(len(configs), 24)
         for path in configs:
             self.assertIn(LongVideoConfig.load(path).frames, (8, 64))
 

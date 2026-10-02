@@ -14,6 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .backends import HFBackend, MockBackend
+from .aks_adapter import select_aks
 from .config import source_fingerprint
 from .data import choose_subset, digest, file_hash
 from .focus_adapter import BlipITMScorer, load_focus, select_focus
@@ -24,7 +25,7 @@ from .longvideo_data import (PARTS, SOURCE, HTTPRangeSource, MultipartReader, ar
                              fetch_annotations, fetch_video, parse_annotations)
 from .metrics import export
 from .runner import runtime_versions
-from .selectors import uniform
+from .selectors import AKS_COMMIT, AKS_SHA256, uniform
 from .store import Store, atomic_json, run_lock
 
 
@@ -83,8 +84,12 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                 "source_sha256": source_fingerprint(), "runtime": longvideo_runtime(config),
                 "dataset_source": SOURCE, "annotation_sha256": file_hash(annotations),
                 "focus_revision": FOCUS_REVISION, "focus_sha256": FOCUS_SHA256,
-                "timing_scope": "video decode + selection (including LENS allocation/BLIP/CLIP/SSIM) + answer; excludes model loading, "
+                "timing_scope": "video decode + selection (AKS/FOCUS BLIP, LENS allocation/BLIP/CLIP/SSIM) + answer; excludes model loading, "
                                 "archive indexing and video transfer/hash (recorded separately)"}
+    if config.method == "aks":
+        contract.update(aks_revision=AKS_COMMIT, aks_sha256=AKS_SHA256,
+                        aks_params={"t1": .8, "t2": -100., "depth": 5},
+                        aks_candidate_implementation="upstream-floor-fps-subsecond-guard-v1")
     old_handlers, stopped = {}, []
     def stop(signum, frame):
         stopped.append(signum)
@@ -127,8 +132,12 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                         backend = LlavaVideoBackend(config)
                     else:
                         backend = HFBackend(config)
-                    scorer = BlipITMScorer(config) if config.method == "focus" and not mock else None
-                    focus = load_focus(Path(__file__).parent / "_vendor/focus.py") if scorer else None
+                    scorer = BlipITMScorer(config) if config.method in {"focus", "aks"} and not mock else None
+                    focus = load_focus(Path(__file__).parent / "_vendor/focus.py") if config.method == "focus" and scorer else None
+                    aks_file = ram_root / "aks/frame_select.py"
+                    if config.method == "aks" and not mock:
+                        from .cli import fetch_aks
+                        fetch_aks(aks_file)
                     lens = None
                     if config.method == "lens" and not mock:
                         from .lens_adapter import LensSelector
@@ -178,6 +187,9 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                             select_start = time.perf_counter()
                             if config.method == "focus":
                                 indices, details = select_focus(video, sample.public_question(), config, scorer, focus)
+                            elif config.method == "aks":
+                                indices, details = select_aks(video, sample.public_question(), config, scorer,
+                                                              aks_file, stop=lambda: bool(stopped))
                             elif config.method == "lens":
                                 indices, frames, details = lens.select(video, sample.public_question(), backend)
                             else:

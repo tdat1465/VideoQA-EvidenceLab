@@ -106,8 +106,9 @@ class LensTests(unittest.TestCase):
     def test_all_configs_are_valid_and_share_ids_protocol(self):
         root = Path(__file__).resolve().parents[1]
         configs = [LongVideoConfig.load(path) for path in (root/'configs').glob('lvb_*.json')]
-        self.assertEqual({c.method for c in configs}, {'uniform', 'focus', 'lens'})
-        self.assertEqual({(c.limit, c.seed, c.protocol) for c in configs}, {(200, 18, 'lvb-video-only-letter-v1')})
+        self.assertEqual({c.method for c in configs}, {'uniform', 'aks', 'focus', 'lens'})
+        self.assertEqual({(c.limit, c.seed, c.protocol) for c in configs},
+                         {(200, 18, 'lvb-video-only-letter-v1'), (0, 18, 'lvb-video-only-letter-v1')})
         with self.assertRaises(ValueError):
             replace(configs[0], lens_implementation='unknown')
 
