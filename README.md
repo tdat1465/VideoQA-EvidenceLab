@@ -1,5 +1,9 @@
 # VideoQA-EvidenceLab
 
+Coffee-Mate reproduction branch: [NExT-QA preparation, official training and evaluation](docs/COFFEE_MATE.md).
+Uses pinned author source in `vendor/coffee_mate`, VideoChat2/Vicuna-v0 and a separate environment.
+GPU reproduction results have not yet been measured.
+
 Thử nghiệm **cải tiến lúc suy luận** cho video multiple-choice QA trên **1 GPU, ngân sách khoảng 32 GB VRAM, mỗi phiên 48 giờ**. Backbone mặc định: **Molmo2-4B đóng băng**. Dataset: **NExT-QA MC** và **STAR**. Không cần huấn luyện lại hoặc dịch vụ API trả phí.
 
 Repo này triển khai một **giả thuyết nghiên cứu cần kiểm chứng**, chưa có kết quả GPU hay tuyên bố SOTA. Khung chạy tham khảo kinh nghiệm Slurm/RAM/resume từ [tdat1465/DyGEnc](https://github.com/tdat1465/DyGEnc). DyGEnc đang dùng AGQA và scene graph; repo mới dùng video gốc, không dùng checkpoint/graph ground truth của DyGEnc.

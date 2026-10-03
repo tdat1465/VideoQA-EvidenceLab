@@ -1,0 +1,18 @@
+# Python 3.10. Torch/torchvision installed separately; isolate from Molmo/Qwen.
+numpy==1.23.5
+transformers==4.28.1
+peft==0.3.0
+accelerate==0.20.3
+huggingface-hub==0.16.4
+timm==0.6.12
+einops==0.6.1
+decord==0.6.0
+av==10.0.0
+opencv-python-headless==4.7.0.72
+Pillow==9.5.0
+PyYAML==6.0.1
+sentencepiece==0.1.99
+wandb==0.14.0
+filelock==3.12.2
+psutil==5.9.4
+termcolor==2.3.0

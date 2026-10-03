@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-04",
+  "upstream_commit": "beaadb3925e2c6ded40e52b95190858cc89933df",
+  "command": "PYTHONPATH=src python -m unittest discover -s tests -q",
+  "tests_run": 38,
+  "tests_skipped": 1,
+  "status": "OK",
+  "slurm_bash_syntax": "passed",
+  "source_provenance": "49 vendored Git blobs verified by SHA256",
+  "gpu_dependencies_installed": false,
+  "real_training_executed": false,
+  "real_qa_accuracy_measured": false,
+  "note": "Fixture accuracies validate grading/reporting only; not model results."
+}

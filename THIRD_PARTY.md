@@ -19,3 +19,12 @@ AKS's inspected repository did not include a LICENSE file. Its source is not red
 Molmo2 needs `trust_remote_code=True`; the immutable commit makes the executable source explicit. Review upstream licenses/model cards and dataset terms before use. No downloaded weights, external implementation, annotations or videos are included in this repository.
 
 NExTVideo archive SHA256: `2e3b1bc3e761122864b46fe3a1790b281301a6ed69de5ca1fceba17c504fa49c`, size 24,253,160,356 bytes. The hash is the pinned Hugging Face LFS SHA256; full bytes are verified by each GPU staging job. The mirror is also linked by [NVIDIA's dataset preparation notes](https://huggingface.co/datasets/nvidia/Nemotron-VLM-Dataset-v2/blob/main/nextqa/README.md). Original NExT-QA authors' video link remains in their official repository.
+## Coffee-Mate
+
+Vendored source: https://github.com/yuanrr/Coffee-Mate, commit
+`beaadb3925e2c6ded40e52b95190858cc89933df`; MIT license preserved in
+`vendor/coffee_mate/LICENSE`, original headers retained. File hashes in
+`docs/COFFEE_MATE_PROVENANCE.json`. BLIP2 components retain Salesforce BSD headers;
+referenced upstream license: https://github.com/salesforce/LAVIS/blob/main/LICENSE.txt.
+Vicuna/LLaMA, VideoChat2 weights and NExT-QA data have separate source license/access
+conditions; weights/videos are not redistributed in this repository.
