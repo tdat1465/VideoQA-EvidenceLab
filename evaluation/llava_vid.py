@@ -107,6 +107,7 @@ class LlavaVid(lmms):
         add_faster_video: bool = False,
         faster_token_stride: int = 10,
         use_topk: bool = False,
+        strict_selected_frames: bool = False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -125,6 +126,11 @@ class LlavaVid(lmms):
             self.device_map = f"cuda:{accelerator.local_process_index}"
 
         self.use_topk = use_topk
+        if isinstance(strict_selected_frames, str):
+            if strict_selected_frames.lower() not in ('true', 'false'):
+                raise ValueError('strict_selected_frames must be True or False')
+            strict_selected_frames = strict_selected_frames.lower() == 'true'
+        self.strict_selected_frames = strict_selected_frames
         
         self.pretrained = pretrained
         self.model_name = get_model_name_from_path(pretrained)
@@ -340,6 +346,19 @@ class LlavaVid(lmms):
         video_time = total_frame_num / vr.get_avg_fps()
         fps = round(vr.get_avg_fps() / fps)
         top_id = doc['frame_idx']
+        if self.strict_selected_frames:
+            # Paired selector experiments must consume the exported IDs even
+            # when AKS's rounded leaf quotas produce fewer than K frames.
+            if force_sample:
+                raise ValueError('force_sample is incompatible with strict_selected_frames')
+            if not top_id or len(top_id) > max_frames_num:
+                raise ValueError('selected frames must be nonempty and within the frame budget')
+            if any(isinstance(i, bool) or not isinstance(i, (int, np.integer)) or i < 0 or i >= total_frame_num for i in top_id):
+                raise ValueError('selected frame ID is invalid for this video')
+            if any(a >= b for a, b in zip(top_id, top_id[1:])):
+                raise ValueError('selected frame IDs must be unique and chronological')
+            frame_time = ','.join(f'{i / vr.get_avg_fps():.2f}s' for i in top_id)
+            return vr.get_batch(top_id).asnumpy(), frame_time, video_time
         frame_idx = top_id[:max_frames_num]
         frame_idx = sorted(frame_idx)
         frame_time = [i / fps for i in frame_idx]

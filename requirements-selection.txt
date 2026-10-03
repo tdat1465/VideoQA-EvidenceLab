@@ -1,0 +1,2 @@
+# CPU selector and unit tests; original feature/evaluation environments are separate.
+numpy>=1.24,<3

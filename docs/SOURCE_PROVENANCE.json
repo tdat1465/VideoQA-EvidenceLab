@@ -1,0 +1,27 @@
+{
+  "review_date": "2026-10-03",
+  "timezone": "Asia/Saigon",
+  "sources": [
+    {
+      "name": "AKS",
+      "url": "https://github.com/ncTimTang/AKS",
+      "commit": "b0b8a58fedf1d05d78151e2969cecde60e83721d",
+      "inspected_file": "../AKS/frame_select.py",
+      "sha256": "0fe3eaa9d16b4057b609b387b6db88c3c249aa4a2e61f5e9a477c3cdbe4f9019"
+    },
+    {
+      "name": "LENS",
+      "url": "https://github.com/zhangce01/LENS",
+      "commit": "a3868ab0c50afd34078c350a9daed9382ab2d251",
+      "inspected_file": "../LENS/utils/sampling.py",
+      "sha256": "61c19e6b6cb04672e047ea35251dfeda0473b4f4699f67f38c40a7caf5f5ed1b"
+    }
+  ],
+  "paper_sha256": {
+    "AKS.pdf": "d68bb12842473e87f5d68fc62b0fa5bc195acadd9dacc2fe139652c0ec70dcd7",
+    "COFFEE_MATE.pdf": "509ddb942d7bfaf0f5bce755ea7ab5670f7f0a43b32353900578934f7914cfc9",
+    "FOCUS.pdf": "743c82fa3ff2e92a50473b309442dddc66e2edf97ba57d40ba44682334c864b0",
+    "LENS.pdf": "00b7670af61cce2f551dcc461deeb3a372a0256928f3b420913f595a4512f49c"
+  },
+  "baseline_fixture_sha256": "0fe3eaa9d16b4057b609b387b6db88c3c249aa4a2e61f5e9a477c3cdbe4f9019"
+}

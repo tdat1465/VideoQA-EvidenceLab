@@ -1,4 +1,8 @@
 # Adaptive Keyframe Sampling for Long Video Understanding 
+Local research extension: [AKS original vs AKS + Watershed](docs/AKS_WATERSHED.md).
+The original selector remains the default. See the guide for source analysis,
+paired selection/evaluation commands, edge-case tests, and recorded limitations.
+
 This is the official implementaion of paper '[***Adaptive Keyframe Sampling for Long Video Understanding***](https://arxiv.org/abs/2502.21271)', which is accepted in ***CVPR 2025***.
 
 
