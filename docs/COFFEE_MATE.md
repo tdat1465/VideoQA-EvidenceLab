@@ -86,8 +86,9 @@ python -m pip check
 
 Driver phải hỗ trợ CUDA wheel; không cài driver bằng apt. Dependencies giữ major
 API gốc Transformers4.28.1/PEFT0.3.0. Không cài `apex==0.9.10dev` từ PyPI (không
-phải NVIDIA Apex); AdamW recipe không yêu cầu Apex. `av10` có thể cần system FFmpeg
-dev libs nếu không có wheel phù hợp; setup này chưa chạy trên server trong phiên.
+phải NVIDIA Apex); AdamW recipe không yêu cầu Apex. PyAV được import khi chọn backend
+av; NExT-QA dùng decord nên không cần build PyAV/FFmpeg dev libraries. `imageio`
+được cài cho import chung của video_utils. GPU runtime chưa được xác minh.
 
 Prefetch BERT vì code gốc yêu cầu `local_files_only=True`:
 

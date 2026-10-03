@@ -75,7 +75,9 @@ class CoffeeMateTests(unittest.TestCase):
                 ast.parse(path.read_text(encoding='utf-8'))
             provenance = verify_vendor()['files']
             changed = {k for k in hashes if hashes[k] != provenance[k]}
-            self.assertEqual(changed, {'dataset/__init__.py', 'dataset/it_dataset.py', 'tasks/train_coffee_mate.py'})
+            self.assertEqual(changed, {'dataset/__init__.py', 'dataset/it_dataset.py', 'dataset/video_utils.py', 'tasks/train_coffee_mate.py'})
+            tree = ast.parse((root / 'dataset/video_utils.py').read_text())
+            self.assertFalse(any(isinstance(n, ast.Import) and any(a.name == 'av' for a in n.names) for n in tree.body))
             self.assertEqual((root / 'models/coffee_mate.py').read_bytes(), (VENDOR / 'models/coffee_mate.py').read_bytes())
             self.assertIn('qsn_id = qsn_id.to(device', (root / 'tasks/train_coffee_mate.py').read_text())
             self.assertNotIn('return self.__getitem__(index)', (root / 'dataset/it_dataset.py').read_text())

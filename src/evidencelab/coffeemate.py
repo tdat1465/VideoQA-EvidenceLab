@@ -103,6 +103,10 @@ def materialize_runtime(destination):
     verify_vendor()
     destination = Path(destination)
     shutil.copytree(VENDOR, destination, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    path = destination / 'dataset/video_utils.py'
+    text = replace_once(path.read_text(), 'import av\n', '')
+    text = replace_once(text, '    reader = av.open(video_path)', '    import av  # Optional PyAV backend; NExT-QA uses decord.\n    reader = av.open(video_path)')
+    path.write_text(text, encoding='utf-8')
     path = destination / 'dataset/__init__.py'
     text = path.read_text()
     old = 'sample_type=config.inputs.video_input.sample_type,\n        num_frames=config.inputs.video_input.num_frames_test,'
