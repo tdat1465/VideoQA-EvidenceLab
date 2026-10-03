@@ -7,6 +7,8 @@ __pycache__/
 .env
 secrets/
 data/
+!vendor/coffee_mate/data/
+!vendor/coffee_mate/data/**
 cache/
 third_party/
 runs/
