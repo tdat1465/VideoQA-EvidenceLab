@@ -33,6 +33,25 @@ def blip_caption(text):
     return " ".join(text.split(" ")[:50])
 
 
+def prepare_blip_itm_tokenizer(tokenizer, text_config, embedding_rows):
+    """Restore LAVIS special tokens to the existing checkpoint embedding rows.
+
+    The pinned HF large-COCO tokenizer contains only the 30,522 BERT tokens,
+    while the trained model has two extra rows: [DEC], then [ENC]. Register
+    them in that order, as LAVIS BlipBase.init_tokenizer does. Never resize or
+    initialize model embeddings, or silently use CLS/UNK for ITM scoring.
+    """
+    if text_config.bos_token_id != 30522 or text_config.vocab_size != 30524 or embedding_rows != 30524:
+        raise ValueError("Unexpected BLIP checkpoint vocabulary; expected 30524 trained rows and BOS 30522")
+    tokenizer.add_special_tokens({"bos_token": "[DEC]"})
+    tokenizer.add_special_tokens({"additional_special_tokens": ["[ENC]"]})
+    dec = tokenizer.convert_tokens_to_ids("[DEC]")
+    enc = tokenizer.convert_tokens_to_ids("[ENC]")
+    if dec != 30522 or enc != 30523 or len(tokenizer) != embedding_rows:
+        raise ValueError("BLIP special-token IDs do not match the trained checkpoint embedding rows")
+    return enc
+
+
 class BlipITMScorer:
     def __init__(self, config):
         import torch
@@ -51,10 +70,9 @@ class BlipITMScorer:
             transforms.ToTensor(),
             transforms.Normalize((.48145466, .4578275, .40821073), (.26862954, .26130258, .27577711)),
         ])
-        enc = self.processor.tokenizer.convert_tokens_to_ids("[ENC]")
-        if enc == self.processor.tokenizer.unk_token_id:
-            raise ValueError("BLIP tokenizer lacks [ENC]")
-        self.enc_id = enc
+        self.enc_id = prepare_blip_itm_tokenizer(
+            self.processor.tokenizer, self.model.config.text_config,
+            self.model.text_encoder.get_input_embeddings().num_embeddings)
         self.reset()
 
     def reset(self):

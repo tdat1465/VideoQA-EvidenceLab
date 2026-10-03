@@ -1,5 +1,57 @@
 # AKS / FOCUS / Uniform / LENS trên LongVideoBench
 
+## Sửa lỗi BLIP của pilot compare-v1 (77818–77821)
+
+Uniform 77818 và LENS 77821 đã commit 2/200 câu. AKS 77819 và FOCUS 77820
+dừng trước câu đầu với `BLIP tokenizer lacks [ENC]`. Checkpoint HF đã pin có
+30.524 embedding rows nhưng tokenizer chỉ có 30.522 token BERT. Bản sửa trên
+nhánh `codex/blip-itm-tokenizer-fix` đăng ký `[DEC]` rồi `[ENC]` theo LAVIS,
+kiểm tra ID 30522/30523 khớp embedding đã huấn luyện. Không resize embedding
+hoặc thay bằng `[CLS]`/`[UNK]`. Đây vẫn là HF port, chưa chứng minh parity LAVIS.
+
+Giữ checkout và run `compare-v1` nguyên trạng. Vì source fingerprint thay đổi,
+không resume run cũ bằng bản sửa và không ghép source khác nhau để paired compare.
+Dùng checkout riêng và label `compare-v2`. Trước hết chỉ pilot AKS/FOCUS:
+
+```bash
+export PERSIST_ROOT=/media/lnthanh03/DatHa
+export REPO_ROOT="$PERSIST_ROOT/code/VideoQA-EvidenceLab-blip-fix"
+git clone --single-branch --branch codex/blip-itm-tokenizer-fix \
+  https://github.com/tdat1465/VideoQA-EvidenceLab.git "$REPO_ROOT"
+cd "$REPO_ROOT"
+git log -1 --oneline
+git status --short
+
+if [ -z "${HF_TOKEN:-}" ]; then
+  read -rsp 'Hugging Face read token: ' HF_TOKEN
+  echo
+fi
+export HF_TOKEN
+
+python3 scripts/slurm/submit_longvideo_suite.py \
+  --backend molmo2 --frames 64 --methods aks focus \
+  --label compare-v2 --max-new-samples 2 --test-only
+python3 scripts/slurm/submit_longvideo_suite.py \
+  --backend molmo2 --frames 64 --methods aks focus \
+  --label compare-v2 --max-new-samples 2 --submit
+```
+
+Sau khi cả hai pilot commit đủ 2 câu và dừng sạch, tiếp tục AKS/FOCUS và khởi
+chạy Uniform/LENS mới trên cùng source. `--resume` hỗ trợ cả run cũ và phương pháp
+chưa có journal. Lệnh sau chạy tới 200 câu mỗi phương pháp, không phải full val:
+
+```bash
+python3 scripts/slurm/submit_longvideo_suite.py \
+  --backend molmo2 --frames 64 --methods uniform aks focus lens \
+  --label compare-v2 --resume --max-new-samples 0 --test-only
+python3 scripts/slurm/submit_longvideo_suite.py \
+  --backend molmo2 --frames 64 --methods uniform aks focus lens \
+  --label compare-v2 --resume --max-new-samples 0 --submit
+```
+
+Các phần bên dưới mô tả suite gốc `compare-v1`; khi dùng bản sửa, dùng checkout
+và label mới ở trên. Không pull hoặc chỉnh code/config giữa các phiên resume.
+
 Nhánh `codex/lvb-aks-focus-suite` dựa trên bản Slurm `1839719`. Mỗi phương pháp dùng
 job và RUN_DIR riêng, 1 GPU, 8 CPU, 90 GiB RAM, tối đa 48 giờ, gpu01/02/03.
 Submit nhiều job không bảo đảm Slurm cấp GPU đồng thời; không cố định cùng một node.
