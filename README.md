@@ -1,5 +1,6 @@
 # Adaptive Keyframe Sampling for Long Video Understanding 
 Local research extension: [AKS original vs AKS + Watershed](docs/AKS_WATERSHED.md).
+Server QA workflow: [dataset preparation, Slurm job and paired accuracy report](docs/SERVER_QA.md).
 The original selector remains the default. See the guide for source analysis,
 paired selection/evaluation commands, edge-case tests, and recorded limitations.
 

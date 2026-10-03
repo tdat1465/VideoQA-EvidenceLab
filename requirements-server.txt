@@ -1,0 +1,8 @@
+# Install the matching torch/torchvision wheel separately (see SERVER_QA.md).
+numpy==1.26.4
+transformers==4.51.3
+huggingface-hub==0.34.4
+accelerate==1.6.0
+decord==0.6.0
+Pillow==11.1.0
+filelock==3.18.0

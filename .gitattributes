@@ -1,2 +1,3 @@
 # Keep the new Linux evaluation launcher usable after a Windows checkout.
 /scripts/evaluate_pair.sh text eol=lf
+/scripts/*.sbatch text eol=lf

@@ -5,3 +5,6 @@ tmp/
 experiments/
 results/
 checkpoints/
+data-local/
+.hf-cache/
+aks-qa-*.log
