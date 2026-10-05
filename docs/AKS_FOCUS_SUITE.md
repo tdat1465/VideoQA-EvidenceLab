@@ -1,5 +1,42 @@
 # AKS / FOCUS / Uniform / LENS trên LongVideoBench
 
+## RAM mặc định 64 GiB cho LongVideoBench
+
+Nhánh `codex/slurm-memory64` giảm yêu cầu mặc định của workflow LongVideoBench
+từ 90 xuống **64 GiB (~68,7 GB)**, dựa trên các job Molmo2 đã chạy và báo cáo
+mức dùng RAM tối đa khoảng 50 GB của người dùng. `submit.py --workflow longvideo`
+và `submit_longvideo_suite.py` đều dùng mặc định này; có `--mem-gib 64` tới
+`--mem-gib 90` để tăng dự phòng. Profile NExT-QA standard vẫn mặc định 90 GiB,
+vì nó tải ZIP và giải nén split vào RAM thay vì staging từng video.
+
+Full validation không giữ toàn dataset: job giữ một video, xóa khi các câu hỏi
+của video đó hoàn tất. Model/cache cố định và metadata nhỏ. Peak RAM vẫn có thể
+tăng khi full split gặp video lớn hơn, decoder cần thêm bộ nhớ hoặc thư viện tích
+lũy cache. Giữ giới hạn video 8 GiB và dự phòng cgroup 6 GiB như trước. Con số
+MaxRSS của một process có thể khác tổng cgroup gồm tmpfs, child process và cache;
+64 GiB có dự phòng nhưng chưa được xác minh bằng job full validation thực tế.
+LLaVA chưa có kết quả RAM GPU trong cuộc trao đổi; dùng `--mem-gib 90` cho pilot
+LLaVA tới khi có số đo riêng.
+
+Bản thay đổi RAM chỉ sửa scripts/tests/docs, không sửa `src`, requirements hoặc
+config. Source fingerprint giữ nguyên, nên có thể resume `compare-v2` với cùng
+RUN_DIR/config/model/runtime/precision. Không cập nhật checkout đang chạy job;
+dùng checkout mới để submit phiên tiếp theo sau khi job cũ đã dừng.
+
+Ví dụ sau khi chuẩn bị checkout của nhánh mới và export HF_TOKEN:
+
+```bash
+python3 scripts/slurm/submit_longvideo_suite.py \
+  --backend molmo2 --frames 64 --methods lens --label compare-v2 \
+  --resume --max-new-samples 0 --mem-gib 64 --test-only
+python3 scripts/slurm/submit_longvideo_suite.py \
+  --backend molmo2 --frames 64 --methods lens --label compare-v2 \
+  --resume --max-new-samples 0 --mem-gib 64 --submit
+```
+
+Resource scripts giữ 1 GPU, 8 CPU, 48 giờ và chỉ gpu01/02/03. Giảm RAM không
+thay đổi giới hạn GPU theo QoS hoặc cơ chế xếp hàng của trường.
+
 ## Sửa lỗi BLIP của pilot compare-v1 (77818–77821)
 
 Uniform 77818 và LENS 77821 đã commit 2/200 câu. AKS 77819 và FOCUS 77820
@@ -53,7 +90,8 @@ Các phần bên dưới mô tả suite gốc `compare-v1`; khi dùng bản sử
 và label mới ở trên. Không pull hoặc chỉnh code/config giữa các phiên resume.
 
 Nhánh `codex/lvb-aks-focus-suite` dựa trên bản Slurm `1839719`. Mỗi phương pháp dùng
-job và RUN_DIR riêng, 1 GPU, 8 CPU, 90 GiB RAM, tối đa 48 giờ, gpu01/02/03.
+job và RUN_DIR riêng, 1 GPU, 8 CPU, tối đa 48 giờ, gpu01/02/03. Suite gốc xin
+90 GiB; nhánh `codex/slurm-memory64` mặc định xin 64 GiB.
 Submit nhiều job không bảo đảm Slurm cấp GPU đồng thời; không cố định cùng một node.
 Dữ liệu được tải từng video vào RAM trên compute node rồi xóa; không tải dataset,
 trọng số hoặc venv lên disk login. Mỗi job có cache và môi trường RAM riêng.

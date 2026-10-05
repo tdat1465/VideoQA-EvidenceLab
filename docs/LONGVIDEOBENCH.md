@@ -11,7 +11,10 @@ Mọi file kiểm tra nằm trong RAM của job. Đây là sửa bước setup, 
 config, code suy luận hoặc giao thức chấm. Nếu job cũ dừng trước khi có journal,
 thử lại với `RESUME=0`; giữ nguyên thư mục kết quả cũ để kiểm tra.
 Giữ nguyên các run NExT-QA đã hoàn tất và checkout cũ để có thể tiếp tục các run cũ khi cần.
-Mỗi job vẫn dùng **1 GPU, 8 CPU, 90 GiB RAM, tối đa 48 giờ**, chỉ gpu01/gpu02/gpu03.
+Mỗi job dùng **1 GPU, 8 CPU, 64 GiB RAM mặc định, tối đa 48 giờ**, chỉ gpu01/gpu02/gpu03.
+Có thể tăng dự phòng bằng `--mem-gib 80` hoặc `--mem-gib 90` trong submitter.
+Full split staging từng video nên không giữ toàn dataset trong RAM; video chưa gặp
+trong pilot vẫn có thể làm peak RAM tăng. LLaVA nên pilot với 90 GiB tới khi có số đo.
 
 Luồng streaming: **Hugging Face → các khối HTTP Range tối đa 4 MiB → một video trong
 tmpfs → xử lý các câu hỏi của video → đóng decoder, xóa video và bộ đệm → video tiếp theo**.
@@ -236,7 +239,7 @@ nếu đã dùng 200 câu để chọn phương pháp/siêu tham số; cần ghi
   phần `.partial` được dọn; video hiện tại được giải phóng trước khi xuất báo cáo.
   Log `Released RAM video: ...` và event `video_evicted` xác nhận bước dọn cuối mỗi video.
   Nếu không đọc được cgroup, chỉ đo được tmpfs; không coi đây là xác nhận peak RAM tổng.
-  Không tự giảm giới hạn 90 GiB dựa trên VRAM.
+  Điều chỉnh RAM theo số đo bộ nhớ hệ thống/cgroup của job, không dựa trên VRAM.
 - **Chưa chạy full-model trên GPU trường cho workflow mới.** Cần pilot thực tế để xác minh
   VRAM, decode video dài, quyền tải và HTTP Range qua mạng compute node. Tập dữ liệu có gate
   nên phiên phát triển chưa đọc được annotation/video thực bằng tài khoản đã được cấp quyền.

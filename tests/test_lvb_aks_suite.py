@@ -109,6 +109,22 @@ class AKSLongVideoTests(unittest.TestCase):
 
 
 class SuitePlanningTests(unittest.TestCase):
+    def test_suite_passes_memory_to_submitter(self):
+        import io
+        from contextlib import redirect_stdout
+        for override, expected in (([], "64"), (["--mem-gib", "80"], "80")):
+            with patch("sys.argv", ["suite.py", "--methods", "focus", "--label", "ram-test", "--test-only",
+                                    "--persist-root", str(Path.cwd())] + override), \
+                 patch.dict("os.environ", {"HF_TOKEN": "test-token"}), \
+                 patch.object(self.module, "plans", return_value=[("config.json", Path("/tmp/run"), True)]), \
+                 patch.object(self.module.subprocess, "run", return_value=SimpleNamespace(
+                     stderr="", stdout="test-only success\n")) as run, redirect_stdout(io.StringIO()):
+                self.assertEqual(self.module.main(), 0)
+                cmd = run.call_args.args[0]
+                self.assertEqual(cmd[cmd.index("--mem-gib") + 1], expected)
+                self.assertIn("--test-only", cmd)
+                self.assertEqual(run.call_args.kwargs['env']['RESUME'], '1')
+
     @classmethod
     def setUpClass(cls):
         path = Path(__file__).resolve().parents[1] / 'scripts/slurm/submit_longvideo_suite.py'

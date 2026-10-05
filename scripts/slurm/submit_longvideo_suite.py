@@ -67,7 +67,10 @@ def main():
     p.add_argument("--partition", default="batch")
     p.add_argument("--node", choices=["gpu01", "gpu02", "gpu03"])
     p.add_argument("--account")
+    p.add_argument("--mem-gib", type=int, default=64, help="Requested RAM per job, 64-90 GiB (default 64)")
     args = p.parse_args()
+    if not 64 <= args.mem_gib <= 90:
+        p.error("--mem-gib must be between 64 and 90")
     if args.max_new_samples < 0 or not args.persist_root.is_absolute():
         p.error("Use an absolute persist root and nonnegative max-new-samples")
     if args.full_validation and args.frames != 64:
@@ -78,14 +81,15 @@ def main():
         p.error("Export HF_TOKEN before submission")
     records = []
     for config, run, resume in items:
-        print(f"CONFIG_FILE={config}\nRUN_DIR={run}\nRESUME={int(resume)} MAX_NEW_SAMPLES={args.max_new_samples}", flush=True)
+        print(f"CONFIG_FILE={config}\nRUN_DIR={run}\nRESUME={int(resume)} MAX_NEW_SAMPLES={args.max_new_samples}\nMEM_GIB={args.mem_gib}", flush=True)
         if not (args.submit or args.test_only):
             continue
         env = os.environ.copy()
         env.update(PERSIST_ROOT=str(args.persist_root), REPO_ROOT=str(REPO), CONFIG_FILE=config,
                    RUN_DIR=str(run), RESUME=str(int(resume)), MAX_NEW_SAMPLES=str(args.max_new_samples))
         cmd = [sys.executable, str(REPO / "scripts/slurm/submit.py"), "--workflow", "longvideo",
-               "--partition", args.partition, "--test-only" if args.test_only else "--parsable"]
+               "--partition", args.partition, "--mem-gib", str(args.mem_gib),
+               "--test-only" if args.test_only else "--parsable"]
         if args.node:
             cmd.extend(["--node", args.node])
         if args.account:
@@ -95,7 +99,8 @@ def main():
             print(reply.stderr, end="", file=sys.stderr)
         print(reply.stdout, end="", flush=True)
         if args.submit:
-            record = {"job_id": reply.stdout.strip(), "config": config, "run_dir": str(run), "resume": resume}
+            record = {"job_id": reply.stdout.strip(), "config": config, "run_dir": str(run), "resume": resume,
+                      "mem_gib": args.mem_gib}
             records.append(record)
             # Persist each successful submission even if a later sbatch fails.
             path = REPO / "logs" / f"suite-{args.label}-{record['job_id'].split(';')[0]}.json"

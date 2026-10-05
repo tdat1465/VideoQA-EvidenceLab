@@ -18,6 +18,31 @@ spec.loader.exec_module(submit)
 
 
 class SubmissionTests(unittest.TestCase):
+    def test_memory_override_preserves_resource_limits(self):
+        for memory in (64, 80, 90):
+            args = submit.submission_args({"gpu01", "gpu04"}, memory_gib=memory)
+            self.assertIn(f"--mem={memory}G", args)
+            self.assertEqual(sum(x.startswith("--mem=") for x in args), 1)
+            self.assertIn("--gres=gpu:1", args)
+            self.assertIn("--time=2-00:00:00", args)
+            self.assertIn("--exclude=gpu04", args)
+        for memory in (0, 50, 63, 91, 100):
+            with self.assertRaises(ValueError):
+                submit.submission_args({"gpu01"}, memory_gib=memory)
+
+    def test_workflow_memory_defaults_and_explicit_override_reach_sbatch(self):
+        from types import SimpleNamespace
+        for workflow, override, expected in (("standard", [], 90), ("longvideo", [], 64),
+                                             ("longvideo", ["--mem-gib", "80"], 80)):
+            with self.subTest(workflow=workflow, override=override), \
+                 patch("sys.argv", ["submit.py", "--workflow", workflow, "--test-only"] + override), \
+                 patch.object(submit.subprocess, "run", side_effect=[
+                     SimpleNamespace(stdout="gpu01\ngpu04\n"), SimpleNamespace(returncode=0)]) as run:
+                self.assertEqual(submit.main(), 0)
+                cmd = run.call_args_list[1].args[0]
+                self.assertIn(f"--mem={expected}G", cmd)
+                self.assertIn("--test-only", cmd)
+
     def test_pool_excludes_gpu04_and_unrelated_partition_nodes(self):
         args = submit.submission_args({"gpu01", "gpu02", "gpu03", "gpu04", "gpu05", "cpu01"})
         self.assertIn("--exclude=cpu01,gpu04,gpu05", args)

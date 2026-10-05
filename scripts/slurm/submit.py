@@ -1,4 +1,4 @@
-"""Submit one 90-GiB job on gpu01/02/03, excluding gpu04 and all other nodes.
+"""Submit one GPU job on gpu01/02/03, excluding gpu04 and all other nodes.
 
 Uses exclusions to support Slurm versions where --nodelist requests every
 listed host. Requires only the standard library on the login node.
@@ -11,7 +11,10 @@ from pathlib import Path
 ALLOWED = {"gpu01", "gpu02", "gpu03"}
 
 
-def submission_args(nodes, partition="batch", node=None, account=None, test_only=False, parsable=False):
+def submission_args(nodes, partition="batch", node=None, account=None, test_only=False, parsable=False,
+                    memory_gib=90):
+    if not 64 <= memory_gib <= 90:
+        raise ValueError("Requested RAM must be between 64 and 90 GiB")
     allowed = {node} if node else ALLOWED
     if not allowed <= ALLOWED:
         raise ValueError("Only gpu01, gpu02 and gpu03 are allowed")
@@ -19,7 +22,7 @@ def submission_args(nodes, partition="batch", node=None, account=None, test_only
         raise ValueError(f"Partition {partition} contains none of the requested nodes")
     excluded = sorted((set(nodes) - allowed) | {"gpu04"})
     args = ["sbatch", f"--partition={partition}", "--nodes=1", "--ntasks=1", "--gres=gpu:1",
-            "--cpus-per-task=8", "--mem=90G", "--time=2-00:00:00", "--export=ALL",
+            "--cpus-per-task=8", f"--mem={memory_gib}G", "--time=2-00:00:00", "--export=ALL",
             "--exclude=" + ",".join(excluded)]
     if node:
         args.append("--nodelist=" + node)
@@ -40,13 +43,17 @@ def main():
     p.add_argument("--test-only", action="store_true")
     p.add_argument("--parsable", action="store_true")
     p.add_argument("--workflow", choices=["standard", "longvideo"], default="standard")
+    p.add_argument("--mem-gib", type=int, help="64-90 GiB; default 64 for longvideo, 90 for standard")
     a = p.parse_args()
+    memory_gib = a.mem_gib if a.mem_gib is not None else (64 if a.workflow == "longvideo" else 90)
+    if not 64 <= memory_gib <= 90:
+        p.error("--mem-gib must be between 64 and 90")
     repo = Path(__file__).resolve().parents[2]
     os.environ.setdefault("REPO_ROOT", str(repo))
     info = subprocess.run(["sinfo", "-N", "-h", "-p", a.partition, "-o", "%N"],
                           capture_output=True, text=True, check=True)
     nodes = {line.strip() for line in info.stdout.splitlines() if line.strip()}
-    args = submission_args(nodes, a.partition, a.node, a.account, a.test_only, a.parsable)
+    args = submission_args(nodes, a.partition, a.node, a.account, a.test_only, a.parsable, memory_gib)
     (repo / "logs").mkdir(exist_ok=True)
     script = "longvideo_job.sh" if a.workflow == "longvideo" else "job.sh"
     return subprocess.run(args + ["--chdir=" + str(repo), str(repo / "scripts/slurm" / script)], cwd=repo).returncode
