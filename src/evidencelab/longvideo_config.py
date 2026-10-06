@@ -38,14 +38,14 @@ class LongVideoConfig:
     vision_id: str = "google/siglip-so400m-patch14-384"
     vision_revision: str = "9fdffc58afc957d1a03a25b10dba0329ab15c2a3"
     focus_params: dict = field(default_factory=dict)
-    lens_implementation: str = "upstream-lazy-1fps-ssim32-v1"
+    lens_implementation: str = "upstream-lazy-1fps-ssim32-blip-limit-v2"
 
     def __post_init__(self):
         if self.backend not in {"molmo2", "llava_video", "mock"}:
             raise ValueError("LongVideoBench backend must be molmo2, llava_video or mock")
         if self.method not in {"uniform", "aks", "focus", "lens"}:
             raise ValueError("LongVideoBench method must be uniform, aks, focus or lens")
-        if self.lens_implementation != "upstream-lazy-1fps-ssim32-v1":
+        if self.lens_implementation != "upstream-lazy-1fps-ssim32-blip-limit-v2":
             raise ValueError("Unknown LENS implementation")
         if self.dtype not in {"auto", "bfloat16", "float16"}:
             raise ValueError("Invalid dtype")

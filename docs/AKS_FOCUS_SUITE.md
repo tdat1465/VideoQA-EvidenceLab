@@ -1,5 +1,9 @@
 # AKS / FOCUS / Uniform / LENS trên LongVideoBench
 
+LENS job 78213 dừng ở 170/200 do text BLIP dài 590 token vượt context 512.
+Xem [bản sửa và hướng dẫn run mới/full validation](LENS_TEXT_LIMIT.md).
+Nhánh sửa text đổi source/config; không resume `compare-v2` bằng nhánh đó.
+
 ## RAM mặc định 64 GiB cho LongVideoBench
 
 Nhánh `codex/slurm-memory64` giảm yêu cầu mặc định của workflow LongVideoBench

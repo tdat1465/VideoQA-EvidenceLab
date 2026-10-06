@@ -67,9 +67,16 @@ class LensTests(unittest.TestCase):
                 return self
         def processor(images, text, **kwargs):
             batch_lengths.append(len(images))
+            self.assertTrue(kwargs['truncation'])
+            self.assertEqual(kwargs['max_length'], 512)
             return Inputs(values=torch.tensor([np.asarray(i)[0,0,0] for i in images]).float())
+        class Tokenizer:
+            model_max_length, truncation_side = 512, 'right'
+            def __call__(self, query, **kwargs): return {'input_ids': list(range(24))}
+        processor.tokenizer = Tokenizer()
         selector.processor = processor
         selector.blip = lambda values: SimpleNamespace(itm_score=torch.stack((torch.zeros_like(values), values/255), -1))
+        selector.blip.config = SimpleNamespace(text_config=SimpleNamespace(max_position_embeddings=512))
         class Video:
             def __len__(self): return 360
             def get_avg_fps(self): return 30.
@@ -92,6 +99,8 @@ class LensTests(unittest.TestCase):
         self.assertIn('choice one', lens_query(question))
         self.assertEqual(details['lens_spatial_views'], 2)
         self.assertEqual(details['lens_temporal_views'], 2)
+        self.assertFalse(details['lens_blip_query_truncated'])
+        self.assertEqual(details['lens_blip_query_tokens'], 24)
         self.assertEqual(details['source_frame_presentations'], 10)
         for frame, view in zip(frames, details['lens_views']):
             if view['kind'] == 'spatial':

@@ -11,7 +11,9 @@ Repo này triển khai một **giả thuyết nghiên cứu cần kiểm chứng
 Đã bổ sung Uniform-64/FOCUS-64 cho **Molmo2-4B** và **LLaVA-Video-7B-Qwen2**.
 Xem [hướng dẫn server trường](docs/LONGVIDEOBENCH.md). Dùng **video-only validation**, mặc định
 200 câu cố định, `limit: 0` cho đủ 1.337 câu. Chấm logits A–E; FOCUS chạy trên toàn timeline
-với BLIP-large ITM. Đây là tích hợp cần pilot GPU, không phải tuyên bố tái lập số liệu paper.
+với BLIP-large ITM. Molmo2 đã chạy trên GPU trường: Uniform 123/200 (61,5%),
+FOCUS 128/200 (64,0%), AKS 137/200 (68,5%) trên cùng mẫu `compare-v2`.
+LLaVA vẫn cần pilot GPU riêng; đây không phải tuyên bố tái lập số liệu paper hoặc SOTA.
 
 Workflow mới chỉ giữ một video trong RAM; không tải toàn bộ archive khoảng 150,47 GiB.
 Các cấu hình `lvb_*.json` dùng entrypoint `python -m evidencelab.longvideo` và
@@ -22,7 +24,9 @@ Các cấu hình `lvb_*.json` dùng entrypoint `python -m evidencelab.longvideo`
 **LENS trên LongVideoBench:** đã có adapter cho Molmo2/LLaVA, ngân sách 8/64 ảnh,
 cùng Uniform/FOCUS để đối chiếu. Xem [hướng dẫn LENS và khác biệt so với upstream](docs/LENS.md).
 Tính cả lượt LLM phân bổ, frame nguồn trong hyperframe và chi phí BLIP/CLIP/SSIM.
-Chưa có kết quả GPU LENS; bản này cần pilot riêng và RUN_DIR mới.
+LENS Molmo2 đã lưu 117/170 câu đúng trước khi job dừng do BLIP nhận 590 token,
+vượt context 512. Xem [bản sửa text BLIP và lệnh chạy mới với 64 GiB](docs/LENS_TEXT_LIMIT.md).
+Không so trực tiếp kết quả 170 câu với accuracy 200 câu; bản sửa cần RUN_DIR mới.
 
 1. Lấy 8 khung hình đều, chạy VLM và tính xác suất tương đối của các lựa chọn A–E.
 2. Nếu chênh lệch hai lựa chọn đầu nhỏ hơn ngưỡng: dùng CLIP tìm khung phân biệt hai lựa chọn, thêm ngữ cảnh trước/sau trong ngân sách tối đa 16 khung.

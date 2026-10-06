@@ -75,6 +75,30 @@ def lens_query(question):
     return f"Question: {question.question}\nOptions:\n{options}Respond with only the letter of the correct option.\n"
 
 
+def lens_blip_text_metadata(tokenizer, text_config, query):
+    """Bound only the BLIP selector query; preserve full text for answer/masking.
+
+    Include special tokens in the context budget. Right truncation preserves
+    the original token sequence for queries that fit the pinned checkpoint.
+    """
+    model_limit = text_config.max_position_embeddings
+    tokenizer_limit = tokenizer.model_max_length
+    for limit in (model_limit, tokenizer_limit):
+        if type(limit) is not int or limit < 2:
+            raise ValueError("Invalid LENS BLIP text context limit")
+    if tokenizer.truncation_side != "right":
+        raise ValueError("LENS BLIP requires right text truncation")
+    limit = min(model_limit, tokenizer_limit)
+    # Suppress the expected tokenizer warning here; the actual model input
+    # below is truncated explicitly. Count once per question, not per batch.
+    count = len(tokenizer(query, add_special_tokens=True, truncation=False,
+                          verbose=False)["input_ids"])
+    return {"lens_blip_text_policy": "right-truncate-context-limit-v1",
+            "lens_blip_max_length": limit, "lens_blip_query_tokens": count,
+            "lens_blip_query_truncated": count > limit,
+            "lens_blip_dropped_tokens": max(0, count - limit)}
+
+
 def neighbors(anchor, count):
     lo, hi = max(0, anchor - 1), min(count, anchor + 3)
     positions = list(range(lo, hi))
@@ -219,6 +243,7 @@ class LensSelector:
         from PIL import Image
         pool = candidate_indices(len(video), float(video.get_avg_fps()))
         query = lens_query(question)
+        text_metadata = lens_blip_text_metadata(self.processor.tokenizer, self.blip.config.text_config, query)
         self.guard()
         allocation = backend.generate_text(self.prompts.ALLOCATION_PROMPT.format(
             USER_QUERY=question.question, TOTAL_BUDGET=self.config.frames), max_new_tokens=16)
@@ -232,6 +257,7 @@ class LensSelector:
                       for i in pool[start:start+self.config.blip_batch_size]]
             # Match LENS's HF BLIP processor, unlike the FOCUS LAVIS-preprocess port.
             inputs = self.processor(images=images, text=[query]*len(images), padding=True,
+                                    truncation=True, max_length=text_metadata["lens_blip_max_length"],
                                     return_tensors="pt").to("cuda:0")
             with torch.inference_mode():
                 logits = self.blip(**inputs).itm_score
@@ -291,7 +317,7 @@ class LensSelector:
             raise ValueError("LENS returned no views")
         views.sort(key=lambda view: view[0])
         indices = [v[0] for v in views]
-        details = {"lens_revision": LENS_REVISION, "lens_ratio": ratio,
+        details = {**text_metadata, "lens_revision": LENS_REVISION, "lens_ratio": ratio,
                    "lens_ratio_fallback": fallback, "lens_allocation": allocation,
                    "auxiliary_vlm_calls": 1, "auxiliary_input_tokens": allocation["input_tokens"],
                    "lens_spatial_budget": spatial_budget, "lens_temporal_budget": temporal_budget,

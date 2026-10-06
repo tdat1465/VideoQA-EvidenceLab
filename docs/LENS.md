@@ -1,5 +1,9 @@
 # LENS trên LongVideoBench: Molmo2 và LLaVA-Video
 
+Hướng dẫn hiện tại: [sửa lỗi BLIP 590 > 512 token, RAM 64 GiB và run mới](LENS_TEXT_LIMIT.md).
+Các ví dụ `lensv1` bên dưới là workflow cũ; không dùng để resume `compare-v2`
+bằng nhánh sửa text vì source/config fingerprint đã thay đổi.
+
 Nguồn: [paper](https://arxiv.org/abs/2607.25125),
 [code chính thức](https://github.com/zhangce01/LENS/tree/a3868ab0c50afd34078c350a9daed9382ab2d251).
 Revision được pin: `a3868ab0c50afd34078c350a9daed9382ab2d251`.
@@ -54,12 +58,14 @@ LENS gồm:
 
 ## RAM và giấy phép
 
-Vẫn dùng 1 GPU, 90 GiB RAM (~96,6 GB), 48 giờ, gpu01/02/03; luôn loại gpu04.
+Mặc định dùng 1 GPU, 64 GiB RAM (~68,7 GB), 48 giờ, gpu01/02/03; luôn loại gpu04.
+Submitter hỗ trợ `--mem-gib 80` hoặc `90`; LLaVA nên pilot với 90 GiB.
 Video tải HTTP Range từng khối 4 MiB vào `/dev/shm/videoqa.<job>.*`; xong video thì xóa.
 BLIP xử lý từng batch, graph chỉ giữ pool ảnh thu nhỏ. Trọng số/env/cache nằm trong RAM;
 CLIP checkpoint gốc OpenAI tải theo khối vào RAM và xác minh SHA256, không dùng `~/.cache/clip`.
-Guard cgroup/tmpfs và reserve 6 GiB vẫn có hiệu lực. Chưa đo peak RAM/VRAM với trọng số thật;
-guard không chứng minh rằng mọi spike khi nạp/chạy mô hình đều nằm trong giới hạn.
+Guard cgroup/tmpfs và reserve 6 GiB vẫn có hiệu lực. Đã có run Molmo2 trên GPU trường,
+nhưng chưa có số đo peak RAM toàn job; `current_bytes` sau từng câu không phải peak.
+Guard không chứng minh rằng mọi spike khi nạp/chạy mô hình đều nằm trong giới hạn.
 
 LENS top-level có MIT license (`_vendor/lens/LICENSE`). Component `API_CLIP/clip_prs`
 giữ **CC BY-NC 4.0** và attribution của Yossi Gandelsman, Alexei A. Efros, Jacob Steinhardt
