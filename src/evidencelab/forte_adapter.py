@@ -304,6 +304,7 @@ def select_forte(video, question, config, scorer, stop=lambda: False):
         "scorer_frame_evaluations": budget, "scorer_unique_frames": budget,
         "scorer_batches": scorer.calls, "forte_implementation": IMPLEMENTATION,
         "forte_rho": config.forte_rho, "forte_timestamp_span_seconds": duration,
+        "forte_source_frames": n, "forte_source_fps": fps,
         "forte_scoring_budget": budget, "forte_initial_indices": initial,
         "forte_scored_indices": pool.tolist(), "forte_raw_scores": scores[pool].tolist(),
         "forte_rounds": rounds, "forte_selection_objective": objective,

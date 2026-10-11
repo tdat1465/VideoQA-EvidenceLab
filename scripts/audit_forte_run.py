@@ -15,6 +15,10 @@ def audit(directory):
         raise ValueError('Export count/ID mismatch')
     for row in rows:
         budget, scored = row['forte_scoring_budget'], row['forte_scored_indices']
+        n, fps = row['forte_source_frames'], row['forte_source_fps']
+        stride = max(1, math.floor(fps / contract['config']['forte_rho']))
+        if budget != max(1, n // stride):
+            raise ValueError(f'Reference budget mismatch: {row["id"]}')
         acquired = row['forte_initial_indices'] + [i for round_ in row['forte_rounds'] for i in round_['acquired_indices']]
         chosen = row['calls'][0]['frame_indices']
         if (len(scored) != budget or len(set(acquired)) != budget or sorted(acquired) != scored
@@ -32,6 +36,9 @@ def audit(directory):
         timestamps = row['calls'][0]['timestamps']
         if timestamps != sorted(set(timestamps)) or len(timestamps) != len(chosen):
             raise ValueError(f'Invalid chronological evidence: {row["id"]}')
+        if (any(i < 0 or i >= n for i in chosen)
+                or any(not math.isclose(t, i / fps, rel_tol=0., abs_tol=1e-9) for i, t in zip(chosen, timestamps))):
+            raise ValueError(f'Original source timestamp mismatch: {row["id"]}')
     return {'audit': 'PASS', 'completed': len(rows), 'selected': contract['selected_count'],
             'complete': summary['complete'], 'source_sha256': contract['source_sha256'],
             'accuracy_completed': summary['accuracy_completed'],

@@ -100,7 +100,7 @@ compatibility, benchmark accuracy, or a speed improvement.
 
 ## Recorded evidence
 
-Each prediction records B distinct scorer evaluations, initial/scored frame IDs,
+Each prediction records original frame count/FPS, B distinct scorer evaluations, initial/scored frame IDs,
 raw measured scores, selected original IDs/timestamps, per-round acquired IDs,
 GP width/jitter/recovery attempts and fit/predict times, acquisition time, final
 optimization time, and supplemental-frame count. Existing total selection timing
