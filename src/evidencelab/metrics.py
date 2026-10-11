@@ -65,6 +65,14 @@ def summarize(contract, results):
             "peak_vram_allocated_gib": max(vram) if vram else None,
             "mean_scorer_frame_evaluations": mean([r.get("scorer_frame_evaluations") for r in results]),
             "mean_selection_seconds": mean([r.get("selection_seconds") for r in results]),
+            "mean_forte_gp_fit_seconds": mean([sum(x["fit_seconds"] for x in r["forte_rounds"])
+                                                for r in results if "forte_rounds" in r]),
+            "mean_forte_gp_predict_seconds": mean([sum(x["predict_seconds"] for x in r["forte_rounds"])
+                                                    for r in results if "forte_rounds" in r]),
+            "mean_forte_acquisition_seconds": mean([sum(x["acquisition_seconds"] for x in r["forte_rounds"])
+                                                     for r in results if "forte_rounds" in r]),
+            "mean_forte_optimization_seconds": mean([r.get("forte_optimization_seconds") for r in results]),
+            "mean_forte_supplemental_frames": mean([r.get("forte_supplemental_frames") for r in results]),
             "video_transfer_hash_seconds": sum(r.get("video_transfer_hash_seconds", 0) for r in results),
             "video_download_bytes": sum(r.get("video_download_bytes", 0) for r in results),
             "peak_job_cgroup_gib": max((r.get("job_cgroup_memory", {}).get("peak_bytes") or 0

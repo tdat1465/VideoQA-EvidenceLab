@@ -1,0 +1,17 @@
+{
+  "backend": "molmo2",
+  "model_id": "allenai/Molmo2-4B",
+  "revision": "042abfa7a38879a376cec03d949eff0aefaa0600",
+  "method": "forte",
+  "frames": 64,
+  "limit": 0,
+  "seed": 18,
+  "selector_seed": 42,
+  "dtype": "auto",
+  "max_input_tokens": 20000,
+  "forte_rho": 0.5,
+  "forte_length_scale": 10.0,
+  "forte_beta_acq": 3.5,
+  "forte_beta_sel": 1.0,
+  "forte_rounds": 4
+}

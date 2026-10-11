@@ -2,6 +2,7 @@
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import json
+import math
 import re
 
 from .data import digest
@@ -39,12 +40,26 @@ class LongVideoConfig:
     vision_revision: str = "9fdffc58afc957d1a03a25b10dba0329ab15c2a3"
     focus_params: dict = field(default_factory=dict)
     lens_implementation: str = "upstream-lazy-1fps-ssim32-blip-limit-v2"
+    forte_rho: float = 0.5
+    forte_length_scale: float = 10.0
+    forte_beta_acq: float = 3.5
+    forte_beta_sel: float = 1.0
+    forte_rounds: int = 4
+    forte_implementation: str = "paper-v1-independent-hf-blip-gap-heap-v1"
 
     def __post_init__(self):
         if self.backend not in {"molmo2", "llava_video", "mock"}:
             raise ValueError("LongVideoBench backend must be molmo2, llava_video or mock")
-        if self.method not in {"uniform", "aks", "focus", "lens"}:
-            raise ValueError("LongVideoBench method must be uniform, aks, focus or lens")
+        if self.method not in {"uniform", "aks", "focus", "lens", "forte"}:
+            raise ValueError("LongVideoBench method must be uniform, aks, focus, lens or forte")
+        for key in ("forte_rho", "forte_length_scale", "forte_beta_acq", "forte_beta_sel"):
+            value = getattr(self, key)
+            if type(value) not in {int, float} or not math.isfinite(value) or value < 0:
+                raise ValueError(f"Invalid {key}")
+        if (self.forte_rho <= 0 or self.forte_length_scale <= 0
+                or type(self.forte_rounds) is not int or self.forte_rounds < 1
+                or self.forte_implementation != "paper-v1-independent-hf-blip-gap-heap-v1"):
+            raise ValueError("Invalid FORTE configuration")
         if self.lens_implementation != "upstream-lazy-1fps-ssim32-blip-limit-v2":
             raise ValueError("Unknown LENS implementation")
         if self.dtype not in {"auto", "bfloat16", "float16"}:

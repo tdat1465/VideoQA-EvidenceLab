@@ -18,6 +18,7 @@ from .aks_adapter import select_aks
 from .config import source_fingerprint
 from .data import choose_subset, digest, file_hash
 from .focus_adapter import BlipITMScorer, load_focus, select_focus
+from .forte_adapter import IMPLEMENTATION as FORTE_IMPLEMENTATION, PAPER as FORTE_PAPER, select_forte
 from .hardware import execution_profile
 from .longvideo_config import FOCUS_REVISION, FOCUS_SHA256, LLAVA_REVISION, LongVideoConfig
 from .longvideo_data import (PARTS, SOURCE, HTTPRangeSource, MultipartReader, archive_index,
@@ -84,12 +85,19 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                 "source_sha256": source_fingerprint(), "runtime": longvideo_runtime(config),
                 "dataset_source": SOURCE, "annotation_sha256": file_hash(annotations),
                 "focus_revision": FOCUS_REVISION, "focus_sha256": FOCUS_SHA256,
-                "timing_scope": "video decode + selection (AKS/FOCUS BLIP, LENS allocation/BLIP/CLIP/SSIM) + answer; excludes model loading, "
+                "timing_scope": "video decode + selection (AKS/FOCUS/FORTE BLIP, FORTE GP/acquisition/DP, LENS allocation/BLIP/CLIP/SSIM) + answer; excludes model loading, "
                                 "archive indexing and video transfer/hash (recorded separately)"}
     if config.method == "aks":
         contract.update(aks_revision=AKS_COMMIT, aks_sha256=AKS_SHA256,
                         aks_params={"t1": .8, "t2": -100., "depth": 5},
                         aks_candidate_implementation="upstream-floor-fps-subsecond-guard-v1")
+    if config.method == "forte":
+        contract.update(forte_paper=FORTE_PAPER, forte_implementation=FORTE_IMPLEMENTATION,
+                        forte_reference_grid="uniform-endpoints-python-round-midpoint-single-v1",
+                        forte_gp_neighborhood="insertion-clamped-to-last-minus-w-through-plus-w-clipped-v1",
+                        forte_gp_initial_half_width=128, forte_gp_max_half_width=1024,
+                        forte_gp_jitter_schedule=[10. ** exponent for exponent in range(-12, -2)],
+                        forte_short_selection="preserve-and-farthest-source-frame-earlier-tie-v1")
     old_handlers, stopped = {}, []
     def stop(signum, frame):
         stopped.append(signum)
@@ -132,7 +140,7 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                         backend = LlavaVideoBackend(config)
                     else:
                         backend = HFBackend(config)
-                    scorer = BlipITMScorer(config) if config.method in {"focus", "aks"} and not mock else None
+                    scorer = BlipITMScorer(config) if config.method in {"focus", "aks", "forte"} and not mock else None
                     focus = load_focus(Path(__file__).parent / "_vendor/focus.py") if config.method == "focus" and scorer else None
                     aks_file = ram_root / "aks/frame_select.py"
                     if config.method == "aks" and not mock:
@@ -190,6 +198,9 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                             elif config.method == "aks":
                                 indices, details = select_aks(video, sample.public_question(), config, scorer,
                                                               aks_file, stop=lambda: bool(stopped))
+                            elif config.method == "forte":
+                                indices, details = select_forte(video, sample.public_question(), config, scorer,
+                                                                stop=lambda: bool(stopped))
                             elif config.method == "lens":
                                 indices, frames, details = lens.select(video, sample.public_question(), backend)
                             else:
