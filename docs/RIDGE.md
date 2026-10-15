@@ -50,7 +50,21 @@ cost. BLIP parity with the author's scoring environment remains unverified.
 
 ## Slurm pilot and full
 
-The deployment package uses a separate checkout/run label `ridge-v1`, requests
+The Git workflow uses the `codex/ridge-molmo2` branch and a separate checkout:
+
+```bash
+cd /media/lnthanh03/DatHa/code
+git clone --single-branch --branch codex/ridge-molmo2 https://github.com/tdat1465/VideoQA-EvidenceLab.git VideoQA-EvidenceLab-ridge-v1
+cd VideoQA-EvidenceLab-ridge-v1
+bash scripts/slurm/run_ridge_server.sh pilot
+```
+
+For later updates, use `git pull --ff-only origin codex/ridge-molmo2`. The
+launcher checks branch, clean source, pinned fingerprint and active runs before
+submission. Use `full` only after inspecting pilot. An offline bundle launcher
+is also available; both use the same planning logic.
+
+The workflow uses the run label `ridge-v1`, requests
 one GPU, 8 CPUs, 90GiB RAM, and only gpu01-03. It submits RIDGE and Uniform as
 independent jobs, checks sbatch test-only before submission, and refuses active
 duplicate run directories or changed source/config.
