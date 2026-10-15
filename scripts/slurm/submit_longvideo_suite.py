@@ -54,7 +54,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--backend", choices=["molmo2", "llava_video"], default="molmo2")
     p.add_argument("--frames", type=int, choices=[8, 64], default=64)
-    p.add_argument("--methods", nargs="+", choices=["uniform", "aks", "focus", "lens", "forte"],
+    p.add_argument("--methods", nargs="+", choices=["uniform", "aks", "focus", "lens", "forte", "ridge"],
                    default=["uniform", "aks", "focus"])
     p.add_argument("--label", required=True)
     p.add_argument("--persist-root", type=Path, default=Path("/media/lnthanh03/DatHa"))

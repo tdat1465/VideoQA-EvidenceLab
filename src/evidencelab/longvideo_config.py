@@ -46,12 +46,22 @@ class LongVideoConfig:
     forte_beta_sel: float = 1.0
     forte_rounds: int = 4
     forte_implementation: str = "paper-v1-independent-hf-blip-gap-heap-v1"
+    ridge_implementation: str = "author-0f710c7-hf-blip-floor-fps-qonly-v1"
+    ridge_sigma: float = 2.0
+    ridge_adaptive_sigma: bool = False
+    ridge_weight_model_id: str = "Qwen/Qwen3-8B"
+    ridge_weight_revision: str = "b968826d9c46dd6066d109eabc6255188de91218"
 
     def __post_init__(self):
         if self.backend not in {"molmo2", "llava_video", "mock"}:
             raise ValueError("LongVideoBench backend must be molmo2, llava_video or mock")
-        if self.method not in {"uniform", "aks", "focus", "lens", "forte"}:
-            raise ValueError("LongVideoBench method must be uniform, aks, focus, lens or forte")
+        if self.method not in {"uniform", "aks", "focus", "lens", "forte", "ridge"}:
+            raise ValueError("LongVideoBench method must be uniform, aks, focus, lens, forte or ridge")
+        if (self.ridge_implementation != "author-0f710c7-hf-blip-floor-fps-qonly-v1"
+                or type(self.ridge_sigma) not in (int, float) or not math.isfinite(self.ridge_sigma)
+                or self.ridge_sigma < 0 or type(self.ridge_adaptive_sigma) is not bool
+                or self.ridge_weight_model_id != "Qwen/Qwen3-8B"):
+            raise ValueError("Invalid RIDGE configuration")
         for key in ("forte_rho", "forte_length_scale", "forte_beta_acq", "forte_beta_sel"):
             value = getattr(self, key)
             if type(value) not in {int, float} or not math.isfinite(value) or value < 0:
@@ -73,7 +83,7 @@ class LongVideoConfig:
             raise ValueError("limit=0 means full validation; otherwise use a positive integer")
         if type(self.seed) is not int or type(self.selector_seed) is not int or self.selector_seed < 0:
             raise ValueError("Invalid random seed")
-        for key in ("revision", "dataset_revision", "blip_revision", "vision_revision"):
+        for key in ("revision", "dataset_revision", "blip_revision", "vision_revision", "ridge_weight_revision"):
             if not re.fullmatch("[a-f0-9]{40}", getattr(self, key)):
                 raise ValueError(f"Pin {key} to a full commit")
         if self.dataset_revision != DATASET_REVISION:

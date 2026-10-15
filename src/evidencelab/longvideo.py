@@ -28,6 +28,8 @@ from .metrics import export
 from .runner import runtime_versions
 from .selectors import AKS_COMMIT, AKS_SHA256, uniform
 from .store import Store, atomic_json, run_lock
+from .ridge_adapter import RIDGE_FILES, RIDGE_REVISION, fetch_ridge, load_ridge, select_ridge
+from .ridge_weights import QwenWeightGenerator, RidgeWeightCache, prepare_weights, weight_contract
 
 
 def longvideo_runtime(config):
@@ -98,6 +100,15 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                         forte_gp_initial_half_width=128, forte_gp_max_half_width=1024,
                         forte_gp_jitter_schedule=[10. ** exponent for exponent in range(-12, -2)],
                         forte_short_selection="preserve-and-farthest-source-frame-earlier-tie-v1")
+    if config.method == "ridge":
+        contract.update(ridge_revision=RIDGE_REVISION, ridge_source_sha256=RIDGE_FILES,
+                        ridge_query="question-only-no-options-no-labels-v1",
+                        ridge_candidate_implementation="aks-floor-fps-v1",
+                        ridge_weight_generation="author-prompt-pinned-qwen-strict-per-question-cache-v1",
+                        ridge_short_selection="all-candidates-no-unscored-padding-v1",
+                        timing_scope="video decode + BLIP scoring + author RIDGE selection + Molmo2 answer; "
+                                     "Qwen weight-generation time and model setup recorded separately; "
+                                     "archive indexing and video transfer/hash excluded and recorded separately")
     old_handlers, stopped = {}, []
     def stop(signum, frame):
         stopped.append(signum)
@@ -120,6 +131,20 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                 if pending:
                     atomic_json(output / "selected-ids.json", sorted(s.id for s in selected))
                     atomic_json(output / "config.latest.json", config.contract())
+                    ridge_author, ridge_cache = None, None
+                    if config.method == "ridge" and not mock:
+                        ridge_directory = fetch_ridge(ram_root / "ridge/upstream")
+                        ridge_author, weight_author = load_ridge(ridge_directory)
+                        ridge_cache = RidgeWeightCache(output / "ridge-weights.json",
+                            weight_contract(config, contract, weight_author),
+                            [s.public_question() for s in selected])
+                        ridge_cache.check_completed(store.results())
+                        weight_questions = pending[:max_new_samples] if max_new_samples else pending
+                        prep = prepare_weights(ridge_cache, [s.public_question() for s in weight_questions],
+                            lambda: QwenWeightGenerator(config, execution["resolved_dtype"], weight_author, ram_root),
+                            stop=lambda: bool(stopped), expired=lambda: time.monotonic()-started >= max_seconds)
+                        store.event({"event": "ridge_weights_ready", **prep,
+                                     "cache_sha256": file_hash(output / "ridge-weights.json")})
                     if not mock:
                         import decord
                         decord.bridge.set_bridge("native")
@@ -140,7 +165,7 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                         backend = LlavaVideoBackend(config)
                     else:
                         backend = HFBackend(config)
-                    scorer = BlipITMScorer(config) if config.method in {"focus", "aks", "forte"} and not mock else None
+                    scorer = BlipITMScorer(config) if config.method in {"focus", "aks", "forte", "ridge"} and not mock else None
                     focus = load_focus(Path(__file__).parent / "_vendor/focus.py") if config.method == "focus" and scorer else None
                     aks_file = ram_root / "aks/frame_select.py"
                     if config.method == "aks" and not mock:
@@ -201,6 +226,9 @@ def run(config, annotations, ram_root, output, index_path, resume=False,
                             elif config.method == "forte":
                                 indices, details = select_forte(video, sample.public_question(), config, scorer,
                                                                 stop=lambda: bool(stopped))
+                            elif config.method == "ridge":
+                                indices, details = select_ridge(video, sample.public_question(), config, scorer,
+                                    ridge_author, ridge_cache.records[sample.id], stop=lambda: bool(stopped))
                             elif config.method == "lens":
                                 indices, frames, details = lens.select(video, sample.public_question(), backend)
                             else:

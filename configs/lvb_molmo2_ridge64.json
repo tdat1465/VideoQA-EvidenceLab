@@ -1,0 +1,10 @@
+{
+  "backend": "molmo2",
+  "method": "ridge",
+  "frames": 64,
+  "limit": 200,
+  "seed": 18,
+  "selector_seed": 42,
+  "ridge_sigma": 2.0,
+  "ridge_adaptive_sigma": false
+}

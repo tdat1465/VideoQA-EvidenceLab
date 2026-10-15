@@ -38,3 +38,14 @@ NExTVideo archive SHA256: `2e3b1bc3e761122864b46fe3a1790b281301a6ed69de5ca1fceba
 - LongVideoBench is accessed through its official gated Hugging Face dataset at
   `60d1c89c1919a198b73be39c2babb213b29d6a5c`. Users must accept its access conditions.
   Neither dataset contents nor pretrained model weights are redistributed here.
+
+## RIDGE additions
+
+The integration fetches `frame_select.py` and `weight.py` from
+[Xssq999/RIDGE](https://github.com/Xssq999/RIDGE) at
+`0f710c7304e806ccedc27b0d177241cb14d77bba` into allocation RAM and verifies their
+raw-byte SHA256 before import. They are not redistributed in this Git bundle;
+no repo-wide upstream license was verified. Our wrapper does not relicense them.
+The exact hashes, unchanged algorithm and documented generation-wrapper
+adaptations are in `docs/RIDGE.md`. Qwen3-8B preferences use the model's own terms
+and pinned revision; no model weights or user credentials are included here.
