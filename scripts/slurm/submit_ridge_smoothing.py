@@ -8,7 +8,7 @@ import sqlite3
 import subprocess
 import sys
 
-from submit import submission_args
+from submit import ALLOWED, submission_args
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
@@ -19,6 +19,17 @@ ROOT = Path("/media/lnthanh03/DatHa")
 BASE_SOURCE = "e92cfc762bde69a511beb494a4b5305bd43e89ccdb72d599de938366da1be057"
 BASELINE = ROOT / "runs/videoqa/lvb-val-molmo2-ridge64-full-ridge-v1"
 OUTPUT = ROOT / "runs/videoqa/lvb-ridge-smoothing-v1-dev200"
+
+
+def placement_args(nodes, node_mode="any"):
+    """One GPU on any eligible pool member, or an explicitly selected member."""
+    if node_mode != "any" and node_mode not in ALLOWED:
+        raise ValueError("Node mode must be any, gpu01, gpu02 or gpu03")
+    node = None if node_mode == "any" else node_mode
+    eligible = sorted(set(nodes) & (ALLOWED if node is None else {node}))
+    # Excluding the other partition members allows Slurm to choose one node;
+    # do not pass a three-host required nodelist for a one-node allocation.
+    return submission_args(nodes, node=node, memory_gib=90), eligible
 
 
 def progress(path):
@@ -35,6 +46,8 @@ def progress(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=["pilot", "dev200"])
+    parser.add_argument("--node", choices=["any"] + sorted(ALLOWED), default="any",
+                        help="Default any: one GPU on gpu01, gpu02 or gpu03")
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--submit", action="store_true")
     action.add_argument("--test-only", action="store_true")
@@ -63,6 +76,8 @@ def main():
         job, name = line.strip().split("|", 1)
         if name == "ridge-sm":
             parser.error(f"A smoothing job {job} is already active; wait before resubmitting")
+    nodes = set(subprocess.check_output(["sinfo", "-N", "-h", "-p", "batch", "-o", "%N"], text=True).split())
+    placement, eligible = placement_args(nodes, args.node)
     env = os.environ.copy()
     env.update(PERSIST_ROOT=str(ROOT), REPO_ROOT=str(REPO), RUN_DIR=str(OUTPUT),
                BASELINE_RUN=str(BASELINE), CONFIG_FILE="configs/lvb_molmo2_ridge64_full.json",
@@ -70,13 +85,14 @@ def main():
                MAX_NEW_SAMPLES=str(max(0, 2-count) if args.mode == "pilot" else 0))
     print(json.dumps({"mode":args.mode, "run_dir":str(OUTPUT), "baseline_read_only":str(BASELINE),
                       "completed_questions_all_variants":count, "gpu_count":1, "memory_gib":90,
+                      "node_mode":args.node, "eligible_nodes":eligible,
+                      "sbatch_placement_args":placement,
                       "variants":["sigma2","sigma1","sigma4","adaptive","multiscale_v1"]}, indent=2))
     if not (args.submit or args.test_only):
         return 0
-    nodes = set(subprocess.check_output(["sinfo", "-N", "-h", "-p", "batch", "-o", "%N"], text=True).split())
     script = str(REPO/"scripts/slurm/ridge_smoothing_job.sh")
     (REPO/"logs").mkdir(exist_ok=True)
-    test = submission_args(nodes, memory_gib=90, test_only=True)
+    test = placement + ["--test-only"]
     subprocess.run(test + ["--chdir="+str(REPO), script], env=env, check=True)
     if args.test_only:
         return 0
@@ -84,11 +100,12 @@ def main():
         env["HF_TOKEN"] = getpass.getpass("Hugging Face read token (hidden): ")
     if not env["HF_TOKEN"]:
         parser.error("HF_TOKEN is empty")
-    command = submission_args(nodes, memory_gib=90, parsable=True)
+    command = placement + ["--parsable"]
     reply = subprocess.check_output(command + ["--chdir="+str(REPO), script], env=env, text=True).strip()
     job = reply.split(";",1)[0]
     record = {"job_id":job, "mode":args.mode, "run_dir":str(OUTPUT), "baseline":str(BASELINE),
-              "max_new_questions":int(env["MAX_NEW_SAMPLES"]), "memory_gib":90}
+              "max_new_questions":int(env["MAX_NEW_SAMPLES"]), "memory_gib":90,
+              "node_mode":args.node, "eligible_nodes":eligible, "sbatch_placement_args":placement}
     (REPO/"logs"/f"ridge-smoothing-{job}.json").write_text(json.dumps(record, indent=2)+"\n")
     print(f"Submitted one GPU job {job}; output: {OUTPUT}")
     return 0

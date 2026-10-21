@@ -95,6 +95,28 @@ bash scripts/slurm/run_ridge_smoothing.sh dev200
 
 Lệnh submit **một job mới** tiếp tục cùng run, bỏ qua các variant đã commit. Không submit khi job `ridge-sm` cũ còn chạy/đợi. Mốc hoàn tất là `complete=true`, `completed_variant_answers=1000`, mỗi variant có `n=200`.
 
+Mặc định `--node any`: Slurm chọn **một GPU trên gpu01, gpu02 hoặc gpu03**. Có thể ghi tường minh:
+
+```bash
+bash scripts/slurm/run_ridge_smoothing.sh dev200 --node any
+```
+
+Khi thực sự cần chỉ định một máy, dùng `--node gpu01`, `--node gpu02` hoặc `--node gpu03`. Launcher in và lưu `node_mode`, `eligible_nodes`, các cờ phân bổ Slurm vào log submission. Code trước đây đã cho phép cả ba node; `any` làm lựa chọn này rõ ràng, không tạo ba allocation và không bảo đảm tăng thứ tự ưu tiên.
+
+Nếu job chờ có reason `Priority`, đó là chờ scheduler ưu tiên job khác, không tự chứng minh bị ghim một node. `mix` chỉ cho biết node đang dùng một phần tài nguyên, không bảo đảm còn GPU trống phù hợp.
+
+Để huỷ riêng job đang **PENDING**, ví dụ job 79322, rồi submit lại:
+
+```bash
+squeue -j 79322
+scancel --user=lnthanh03 --name=ridge-sm --state=PENDING 79322
+squeue -u lnthanh03 -n ridge-sm
+git pull --ff-only https://github.com/tdat1465/VideoQA-EvidenceLab.git codex/ridge-molmo2
+bash scripts/slurm/run_ridge_smoothing.sh dev200 --node any
+```
+
+Bộ lọc trên chỉ huỷ job 79322 đúng user/tên và còn PENDING; nếu nó đã chuyển RUNNING, lệnh không huỷ. Khi đó không submit trùng. Huỷ rồi submit lại có thể làm thay đổi ưu tiên chờ, vì vậy có thể giữ job cũ nếu mục tiêu chỉ là cho phép cả ba node. Không xoá cache/checkpoint; code runner và hash thực nghiệm giữ nguyên nên resume được pilot đã kiểm tra.
+
 Nếu bị dừng trước đó, chạy lại mode `dev200` sau khi job đã kết thúc; SQLite và cache đã lưu là nguồn resume. Không đổi code hoặc xóa run giữa chừng. Không chạy lại hai full baseline.
 
 Manifest được chọn cố định bằng seed=18, theo toàn bộ nhóm câu của từng video có ít nhất 64 candidate trong baseline. Không dùng kết quả đúng/sai để chọn câu. Đây là **tập phát triển đã thuộc LVB được xem kết quả**, không gọi là tập kiểm tra chưa từng dùng. Các video trong manifest cần được loại hoàn toàn khỏi một split video-disjoint sau này.
