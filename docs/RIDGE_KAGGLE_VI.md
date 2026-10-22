@@ -5,7 +5,7 @@
 ## 1. Hai file cần dùng
 
 - `outputs/ridge-kaggle-v1/RIDGE_Kaggle_T4x2.ipynb`: notebook để import.
-- `outputs/ridge-kaggle-v1/ridge-kaggle-input.zip`: khoảng 5,9 MB, gồm code, score BLIP, trọng số ưu tiên Qwen và metadata. Không chứa video, trọng số Molmo2 hoặc token.
+- `outputs/ridge-kaggle-v1/ridge-kaggle-input.zip`: khoảng 7,2 MB, gồm code, score BLIP, trọng số ưu tiên Qwen, metadata và bản sao từ vựng tránh giải nén lồng nhau. Không chứa video, trọng số Molmo2 hoặc token. Dataset cũ khoảng 5,9 MB vẫn dùng được với notebook mới.
 
 ## 2. Chuẩn bị trên Kaggle
 
@@ -20,6 +20,8 @@
 Chạy lần lượt các cell từ trên xuống. Cell môi trường cài venv riêng; lần đầu sẽ mất thời gian tải thư viện, model và lập chỉ mục video. Notebook tải từng video cần dùng, không tải toàn bộ kho video.
 
 Bản notebook đã sửa lỗi kernel Python ngoài 3.10–3.12: cell đầu chỉ in phiên bản kernel, cell môi trường dùng uv tải **Python 3.12.11** riêng cho worker. Không cần đổi kernel hoặc sửa bộ thư viện đã ghim. Nếu đang dùng bản cũ báo AssertionError này, import lại notebook đã cập nhật và chạy từ đầu; dùng lại Dataset input cũ.
+
+Nếu gặp thiếu `bpe_simple_vocab_16e6.txt.gz` ở cell đầu, dùng bản notebook mới nhất và chạy lại từ đầu với Internet bật. Bộ nạp tự khôi phục đúng file từ vựng từ bản sao an toàn trong gói mới, hoặc nguồn OpenAI CLIP ở commit cố định với gói cũ; chỉ ghi file khi SHA256 khớp bản gốc. Không cần tạo lại Dataset đã upload, không bỏ kiểm tra checksum.
 
 Trong cell chạy cuối, giữ:
 

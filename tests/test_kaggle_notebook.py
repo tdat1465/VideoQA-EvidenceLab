@@ -1,14 +1,63 @@
 """Regression checks for a newer Kaggle kernel and a separate pinned worker."""
+import base64
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import unittest
+from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[1]
 
 class KaggleNotebookTests(unittest.TestCase):
+    def check_missing_vocab(self, *, sidecar=False, corrupt_download=False):
+        notebook = json.loads((REPO / 'notebooks/RIDGE_Kaggle_T4x2.ipynb').read_text(encoding='utf-8'))
+        cell = next(''.join(c['source']) for c in notebook['cells'] if c['cell_type'] == 'code')
+        key = 'code/src/evidencelab/_vendor/lens/API_CLIP/clip_prs/utils/vocab/bpe_simple_vocab_16e6.txt.gz'
+        payload = (REPO / key.removeprefix('code/')).read_bytes()
+        expected = hashlib.sha256(payload).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = root / 'input'
+            bundle = inputs / 'dataset/bundle'
+            bundle.mkdir(parents=True)
+            manifest = {'files':{key:expected}}
+            if sidecar:
+                manifest['transport_base64'] = {key:'vocab.base64.txt'}
+                (bundle / 'vocab.base64.txt').write_bytes(base64.b64encode(payload))
+            (bundle / 'bundle-manifest.json').write_text(json.dumps(manifest))
+            for original, replacement in [('/kaggle/input',inputs), ('/kaggle/working',root/'working'),
+                                          ('/kaggle/temp',root/'temp')]:
+                cell = cell.replace(original, replacement.as_posix())
+            cell = cell.replace("subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv'], check=True)", 'pass')
+            namespace = {}
+            data = b'corrupt' if corrupt_download else payload
+            with patch('urllib.request.urlopen', return_value=io.BytesIO(data)) as download:
+                if corrupt_download:
+                    with self.assertRaisesRegex(AssertionError, 'Restored asset hash mismatch'):
+                        exec(compile(cell, 'input-cell', 'exec'), namespace)
+                    self.assertFalse((root/'working/ridge-kaggle-v1/ridge-kaggle-bundle'/key).exists())
+                else:
+                    exec(compile(cell, 'input-cell', 'exec'), namespace)
+                    self.assertEqual((namespace['BUNDLE']/key).read_bytes(), payload)
+                if sidecar:
+                    download.assert_not_called()
+                else:
+                    download.assert_called_once()
+                    self.assertIn('/a1d071733d7111c9c014f024669f959182114e33/', download.call_args.args[0])
+
+    def test_nested_gzip_restored_offline_from_sidecar(self):
+        self.check_missing_vocab(sidecar=True)
+
+    def test_old_dataset_restores_missing_vocab_from_pinned_source(self):
+        self.check_missing_vocab()
+
+    def test_corrupt_download_is_rejected_before_write(self):
+        self.check_missing_vocab(corrupt_download=True)
+
     def test_new_kernel_bootstraps_pinned_worker_and_reuses_it(self):
         notebook = json.loads((REPO / 'notebooks/RIDGE_Kaggle_T4x2.ipynb').read_text(encoding='utf-8'))
         cells = [''.join(c['source']) for c in notebook['cells'] if c['cell_type'] == 'code']

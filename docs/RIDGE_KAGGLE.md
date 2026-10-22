@@ -2,7 +2,7 @@
 
 This is a **new FP16 experiment**, with Molmo2 weights sharded across both T4 GPUs using Accelerate's `balanced` mapping. It is not a continuation of the BF16 A100 school run. The 376 existing school answers remain in their original run; finish the remaining 24 on the school server if completing that experiment.
 
-The provided importable notebook is `outputs/ridge-kaggle-v1/RIDGE_Kaggle_T4x2.ipynb` in the local workspace, accompanied by `ridge-kaggle-input.zip`. The ZIP contains approximately 6 MB of code, author selection source, baseline metadata, precomputed BLIP scores and cached Qwen preference weights. It contains no video bytes, answer model weights or credentials. Upload it to a **private** Kaggle Dataset and attach that Dataset to the notebook. No upload has been performed by the assistant.
+The provided importable notebook is `outputs/ridge-kaggle-v1/RIDGE_Kaggle_T4x2.ipynb` in the local workspace, accompanied by `ridge-kaggle-input.zip`. The current ZIP contains approximately 7.2 MB of code, author selection source, baseline metadata, precomputed BLIP scores, cached Qwen preference weights and an archive-safe vocabulary copy. It contains no video bytes, answer model weights or credentials. Upload it to a **private** Kaggle Dataset and attach that Dataset to the notebook. No upload has been performed by the assistant. Older 5.9 MB bundles remain supported.
 
 ## Notebook setup
 
@@ -13,6 +13,8 @@ The provided importable notebook is `outputs/ridge-kaggle-v1/RIDGE_Kaggle_T4x2.i
 5. Run the cells in order. The notebook kernel may use a newer Python version: uv 0.8.22 downloads a separate Python 3.12.11 and creates `/kaggle/temp/ridge-v1/venv-py312-v2`. That worker environment installs Torch 2.8.0 with CUDA 12.6 and the existing pinned Molmo requirements. The notebook kernel and its packages remain unchanged. Internet access is required for the Python download as well as dependencies.
 
 The first cell prints GPU names and checks the input ZIP's hashes. The preflight validates all 200 source caches and historical baseline consistency. The backend then verifies two T4 GPUs and native FP16 CUDA operations. CPU/disk weight offload is not accepted by this profile; videos and model downloads use Kaggle's temporary disk, separately from saved results.
+
+If Dataset processing expands the nested CLIP `.txt.gz` asset, the loader restores its exact bytes from a base64 sidecar in newer bundles. With older bundles, it downloads only that missing asset from the fixed OpenAI CLIP commit `a1d071733d7111c9c014f024669f959182114e33` and requires its original SHA256. All bundle checks still run. The existing input Dataset can therefore be reused; missing score/code files and modified assets are rejected.
 
 ## Pilot and full run
 
