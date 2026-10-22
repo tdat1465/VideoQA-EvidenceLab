@@ -1,6 +1,6 @@
 # Chạy RIDGE trên Kaggle T4 ×2
 
-Đã chuẩn bị notebook riêng cho **Molmo2-4B FP16**, chia trọng số lên hai GPU T4. Đây là thực nghiệm mới; không nối tiếp 376 câu trả lời BF16 trên server trường. Gói đã kiểm tra CPU, chưa chạy suy luận thật trên Kaggle.
+Đã chuẩn bị notebook **v2 cho Molmo2-4B FP16**, chia trọng số lên hai GPU T4. V2 dùng thư mục và contract mới; không nối journal Kaggle v1 hoặc 376 câu trả lời BF16 trên server trường. Gói đã kiểm tra CPU, chưa chạy suy luận thật trên Kaggle.
 
 ## 1. Hai file cần dùng
 
@@ -20,6 +20,8 @@
 Chạy lần lượt các cell từ trên xuống. Cell môi trường cài venv riêng; lần đầu sẽ mất thời gian tải thư viện, model và lập chỉ mục video. Notebook tải từng video cần dùng, không tải toàn bộ kho video.
 
 Bản notebook đã sửa lỗi kernel Python ngoài 3.10–3.12: cell đầu chỉ in phiên bản kernel, cell môi trường dùng uv tải **Python 3.12.11** riêng cho worker. Không cần đổi kernel hoặc sửa bộ thư viện đã ghim. Nếu đang dùng bản cũ báo AssertionError này, import lại notebook đã cập nhật và chạy từ đầu; dùng lại Dataset input cũ.
+
+Bản v2 xử lý lỗi tăng RAM ở bước video: ghi lần lượt 64 frame RGB nguyên độ phân giải ra scratch trên đĩa, giải phóng decoder rồi đưa mảng ánh xạ đĩa vào processor gốc. Không giữ danh sách 64 ảnh PIL và không tạo thêm `np.stack` chứa toàn bộ ảnh gốc. Notebook kèm runner mới có kiểm tra SHA256, nên vẫn gắn Dataset input cũ được. Có log RAM theo từng bước và dừng có kiểm soát khi headroom cgroup đọc được còn dưới 1,25 GiB; chưa bảo đảm mọi video đều vừa RAM Kaggle.
 
 Nếu gặp thiếu `bpe_simple_vocab_16e6.txt.gz` ở cell đầu, dùng bản notebook mới nhất và chạy lại từ đầu với Internet bật. Bộ nạp tự khôi phục đúng file từ vựng từ bản sao an toàn trong gói mới, hoặc nguồn OpenAI CLIP ở commit cố định với gói cũ; chỉ ghi file khi SHA256 khớp bản gốc. Không cần tạo lại Dataset đã upload, không bỏ kiểm tra checksum.
 
@@ -56,11 +58,11 @@ Hoàn tất khi `completed_variant_answers=1000`, `complete=true`, mỗi biến 
 Tải hai file trong Output hoặc lưu version có outputs:
 
 ```text
-/kaggle/working/ridge-kaggle-v1/ridge-kaggle-checkpoint.zip
-/kaggle/working/ridge-kaggle-v1/session.log
+/kaggle/working/ridge-kaggle-v2/ridge-kaggle-checkpoint.zip
+/kaggle/working/ridge-kaggle-v2/session.log
 ```
 
-SQLite commit sau mỗi biến thể; ZIP cập nhật mỗi 5 câu và khi worker thoát bình thường. Khi cần dừng, dùng Interrupt rồi chờ worker lưu xong. Việc nền tảng tắt cưỡng bức có thể khiến ZIP chưa chứa các câu mới nhất; lưu outputs trước khi kết thúc session.
+SQLite commit sau mỗi biến thể; ZIP cập nhật khi khởi tạo run, sau mỗi câu và khi worker thoát bình thường. Khi cần dừng, dùng Interrupt rồi chờ worker lưu xong. Việc nền tảng tắt cưỡng bức có thể khiến ZIP chưa chứa các câu mới nhất; lưu outputs trước khi kết thúc session.
 
 Để tiếp tục ở session mới: tạo private Dataset chứa ZIP checkpoint mới nhất, gắn Dataset này cùng input bundle gốc, chạy lại notebook theo thứ tự và chọn `MODE='full'`. Cell khôi phục hỗ trợ cả checkpoint ZIP và nội dung do Kaggle tự giải nén. Giữ nguyên code và môi trường; khác hợp đồng runtime/device map sẽ bị từ chối để tránh trộn kết quả.
 

@@ -39,7 +39,7 @@ class KaggleNotebookTests(unittest.TestCase):
                 if corrupt_download:
                     with self.assertRaisesRegex(AssertionError, 'Restored asset hash mismatch'):
                         exec(compile(cell, 'input-cell', 'exec'), namespace)
-                    self.assertFalse((root/'working/ridge-kaggle-v1/ridge-kaggle-bundle'/key).exists())
+                    self.assertFalse((root/'working/ridge-kaggle-v2/ridge-kaggle-bundle'/key).exists())
                 else:
                     exec(compile(cell, 'input-cell', 'exec'), namespace)
                     self.assertEqual((namespace['BUNDLE']/key).read_bytes(), payload)

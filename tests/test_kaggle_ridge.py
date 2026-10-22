@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
-import json,os,tempfile,unittest,zipfile
+import json,os,tempfile,unittest,zipfile,gc
+from unittest.mock import patch
 import numpy as np
 from evidencelab.data import digest
 from evidencelab.pipeline import Decision
@@ -20,6 +21,66 @@ class KaggleRidgeTests(unittest.TestCase):
   mod.validate_device_map({'vision':0,'decoder':'cuda:1'})
   for invalid in [{'all':0},{'a':0,'b':1,'c':'cpu'},{'a':0,'b':'disk'}]:
    with self.assertRaises(RuntimeError):mod.validate_device_map(invalid)
+
+ def test_disk_frames_preserve_pixels_order_and_release_decoder_before_processor(self):
+  alive=[]
+  class Decoder:
+   def __init__(self,path):alive.append(True)
+   def __getitem__(self,index):
+    a=np.full((7,11,3),index,np.uint8)
+    return type('Frame',(),{'asnumpy':lambda self:a})()
+   def __del__(self):alive.pop()
+  indices=list(range(0,128,2))
+  with tempfile.TemporaryDirectory() as temp,patch.object(mod,'memory_phase',return_value={}):
+   root=Path(temp);target=root/'frames.bin'
+   with mod.mapped_rgb_frames(root/'video.mp4',indices,target,Decoder) as frames:
+    self.assertEqual(alive,[])
+    self.assertIsInstance(frames,np.memmap)
+    self.assertEqual(frames.shape,(64,7,11,3))
+    self.assertEqual(frames.dtype,np.uint8)
+    np.testing.assert_array_equal(frames[:,0,0,0],indices)
+    self.assertTrue(target.exists())
+   self.assertFalse(target.exists())
+
+ def test_disk_frames_cleanup_after_interruption(self):
+  class Decoder:
+   def __init__(self,path):pass
+   def __getitem__(self,index):return type('Frame',(),{'asnumpy':lambda self:np.zeros((2,3,3),np.uint8)})()
+  with tempfile.TemporaryDirectory() as temp,patch.object(mod,'memory_phase',return_value={}):
+   root=Path(temp);target=root/'frames.bin'
+   with self.assertRaises(InterruptedError):
+    with mod.mapped_rgb_frames(root/'v.mp4',[0,1],target,Decoder,stop=lambda:True):pass
+   self.assertFalse(target.exists())
+
+ def test_memory_limits_use_cgroup_without_slurm_and_stop_before_low_headroom(self):
+  with tempfile.TemporaryDirectory() as temp:
+   root=Path(temp);group=root/'cgroup';group.mkdir();proc=root/'proc/self';proc.mkdir(parents=True)
+   (group/'memory.current').write_text(str(12*1024**3));(group/'memory.max').write_text(str(13*1024**3))
+   (proc/'cgroup').write_text('0::/\n');(proc/'status').write_text('VmRSS:\t4096 kB\n')
+   info=mod.memory_snapshot(group,root/'proc')
+   self.assertEqual(info['cgroup_headroom_bytes'],1024**3)
+   self.assertEqual(info['worker_rss_bytes'],4096*1024)
+   with patch.object(mod,'memory_snapshot',return_value=info):
+    with self.assertRaises(MemoryError):mod.memory_phase('decode_frame')
+
+ def test_mapped_processor_input_avoids_native_stack_and_preserves_metadata(self):
+  from evidencelab.backends import prompt,molmo_metadata
+  class Processor:
+   def apply_chat_template(self,messages,**kwargs):
+    self.messages=messages;return 'rendered'
+   def __call__(self,**kwargs):self.kwargs=kwargs;return {'input_ids':[[1,2]]}
+  backend=object.__new__(mod.KaggleBackend);backend.processor=Processor()
+  question=type('Public',(),dict(question='Which action?',choices=['a','b']))()
+  times=[i*1.25 for i in range(64)]
+  with tempfile.TemporaryDirectory() as temp,patch.object(mod,'memory_phase',return_value={}):
+   frames=np.memmap(Path(temp)/'frames',dtype=np.uint8,mode='w+',shape=(64,2,3,3))
+   try:
+    backend._inputs(question,frames,times)
+    self.assertIs(backend.processor.kwargs['videos'][0],frames)
+    self.assertEqual(backend.processor.kwargs['video_metadata'],[molmo_metadata(times)])
+    self.assertFalse(backend.processor.kwargs['do_sample_frames'])
+    self.assertEqual(backend.processor.messages[0]['content'][1]['text'],prompt(question))
+   finally:frames._mmap.close()
 
  def test_platform_paths_are_separate_from_school_server(self):
   mod.validate_paths(Path('/kaggle/working/ridge/run'),Path('/kaggle/temp/ridge'))

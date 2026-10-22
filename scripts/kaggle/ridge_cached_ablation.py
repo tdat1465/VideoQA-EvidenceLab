@@ -1,11 +1,12 @@
 """Separate Kaggle T4x2 FP16 experiment. Never resume or mutate Slurm BF16 runs."""
 from __future__ import annotations
 import argparse
-from contextlib import closing
+from contextlib import closing,contextmanager
 from dataclasses import replace
 import gc
 import json
 import math
+import mmap
 import os
 from pathlib import Path
 import shutil
@@ -22,10 +23,110 @@ import ridge_smoothing_ablation as smoothing
 from evidencelab.data import digest,file_hash
 from evidencelab.config import source_fingerprint
 from evidencelab.store import Store,atomic_json,run_lock
-from evidencelab.backends import HFBackend
+from evidencelab.backends import HFBackend,prompt,molmo_metadata
 
 VARIANTS=('sigma2','sigma1','multiscale_v1','vote_only','rescue_only')
 load=components.load
+VIDEO_IO_PROFILE='rgb64-disk-map-original-pixels-decoder-released-v2'
+
+def memory_snapshot(cgroup=Path('/sys/fs/cgroup'),proc=Path('/proc')):
+    """Read container limits independently of Slurm; never use host RAM as a job limit."""
+    result={};groups={cgroup,cgroup/'memory'}
+    try:
+        for line in (proc/'self/cgroup').read_text().splitlines():
+            _,controllers,relative=line.split(':',2)
+            if not controllers or 'memory' in controllers.split(','):
+                root=cgroup if not controllers else cgroup/'memory'
+                leaf=root/relative.lstrip('/')
+                if root==leaf or root in leaf.parents:
+                    groups.add(leaf)
+                    groups.update(p for p in leaf.parents if p==root or root in p.parents)
+    except (OSError,ValueError):pass
+    limits=[]
+    for group in groups:
+        for current,maximum in [('memory.current','memory.max'),('memory.usage_in_bytes','memory.limit_in_bytes')]:
+            try:
+                used=int((group/current).read_text());limit=int((group/maximum).read_text())
+                if 0<limit<2**60:limits.append((limit-used,used,limit,str(group)))
+            except (OSError,ValueError):pass
+    if limits:
+        free,used,limit,group=min(limits)
+        result.update(cgroup_current_bytes=used,cgroup_limit_bytes=limit,cgroup_headroom_bytes=free,cgroup_path=group)
+    try:
+        for line in (proc/'self/status').read_text().splitlines():
+            if line.startswith('VmRSS:'):result['worker_rss_bytes']=int(line.split()[1])*1024
+    except (OSError,ValueError):pass
+    return result
+
+def memory_phase(phase,**details):
+    info=memory_snapshot()
+    print(json.dumps({'event':'memory_phase','phase':phase,**info,**details}),flush=True)
+    if info.get('cgroup_headroom_bytes',2**63)<1280*1024**2:
+        raise MemoryError(f'Container RAM headroom below 1.25 GiB before {phase}; stopping to save results')
+    return info
+
+def release_cpu():
+    gc.collect()
+    if sys.platform.startswith('linux'):
+        import ctypes
+        try:ctypes.CDLL(None).malloc_trim(0)
+        except (AttributeError,OSError):pass
+
+def scratch_filesystem(path,mountinfo=Path('/proc/self/mountinfo')):
+    matches=[]
+    try:
+        for line in mountinfo.read_text().splitlines():
+            left,right=line.split(' - ',1);mount=Path(left.split()[4])
+            if path==mount or mount in path.parents:matches.append((len(mount.parts),right.split()[0]))
+    except (OSError,ValueError,IndexError):pass
+    return max(matches)[1] if matches else None
+
+@contextmanager
+def mapped_rgb_frames(path,indices,destination,reader_factory,stop=lambda:False):
+    """Decode one RGB frame at a time; native pixels live on disk, not a PIL list."""
+    import numpy as np
+    decoder=None;frames=None;frame=None
+    destination.unlink(missing_ok=True)
+    try:
+        memory_phase('decode_start',frames=len(indices))
+        decoder=reader_factory(path)
+        shape=None
+        with destination.open('xb',buffering=0) as output:
+            for position,index in enumerate(indices):
+                if stop():raise InterruptedError('Stop during frame staging')
+                memory_phase('decode_frame',position=position,index=index)
+                frame=decoder[index].asnumpy()
+                if frame.dtype!=np.uint8 or frame.ndim!=3 or frame.shape[-1]!=3 or not frame.flags.c_contiguous:
+                    raise ValueError('Decoder must supply contiguous original RGB uint8 frames')
+                if shape is None:
+                    shape=(len(indices),*frame.shape)
+                    needed=math.prod(shape)
+                    if shutil.disk_usage(destination.parent).free<needed+4*1024**3:
+                        raise MemoryError('Not enough scratch disk for original-resolution selected frames')
+                    print(json.dumps({'event':'rgb_disk_staging','shape':shape,'bytes':needed}),flush=True)
+                elif frame.shape!=shape[1:]:raise ValueError('Video frame shape changed')
+                view=memoryview(frame).cast('B');offset=0
+                while offset<len(view):
+                    written=output.write(view[offset:])
+                    if not written:raise OSError('Short RGB write')
+                    offset+=written
+                del view;frame=None
+                if hasattr(os,'posix_fadvise'):
+                    try:
+                        os.fdatasync(output.fileno())
+                        os.posix_fadvise(output.fileno(),0,0,os.POSIX_FADV_DONTNEED)
+                    except OSError:
+                        if position==0:print('Scratch filesystem does not support cache advice',flush=True)
+        if shape is None:raise ValueError('No selected frames')
+        decoder=None;release_cpu()  # Release native decoder buffers before processor allocations.
+        memory_phase('decode_done',shape=shape)
+        frames=np.memmap(destination,mode='r+',dtype=np.uint8,shape=shape)
+        yield frames
+    finally:
+        frame=None;decoder=None
+        if frames is not None:frames._mmap.close()
+        destination.unlink(missing_ok=True)
+        release_cpu()
 
 def validate_device_map(mapping):
     devices={str(v).replace('cuda:','') for v in mapping.values()}
@@ -59,17 +160,36 @@ class KaggleBackend(HFBackend):
         torch.manual_seed(config.seed);torch.cuda.manual_seed_all(config.seed)
         self.processor=AutoProcessor.from_pretrained(config.model_id,revision=config.revision,
                                                     use_fast=False,trust_remote_code=True)
+        memory_phase('model_load_start')
         self.model=AutoModelForImageTextToText.from_pretrained(config.model_id,revision=config.revision,
             trust_remote_code=True,torch_dtype=torch.float16,attn_implementation='sdpa',
             device_map='balanced',max_memory={0:'6GiB',1:'6GiB','cpu':'0GiB'},low_cpu_mem_usage=True)
         validate_device_map(self.model.hf_device_map)
         self.model.eval().requires_grad_(False)
+        release_cpu();memory_phase('model_load_done')
         self.letter_ids=[]
         for label in 'ABCDE':
             ids=self.processor.tokenizer.encode(label,add_special_tokens=False)
             if len(ids)!=1:raise ValueError('Answer letter tokenizer changed')
             self.letter_ids.append(ids[0])
         self.profile['device_map']={k:str(v) for k,v in self.model.hf_device_map.items()}
+        self.profile['video_io_profile']=VIDEO_IO_PROFILE
+    def _inputs(self,question,frames,times):
+        import numpy as np
+        if not isinstance(frames,np.memmap) or frames.ndim!=4 or frames.shape[0]!=64:
+            raise ValueError('Kaggle v2 requires 64 original RGB frames in a disk mapping')
+        messages=[{'role':'user','content':[{'type':'video','video':'predecoded'},
+                                           {'type':'text','text':prompt(question)}]}]
+        rendered=self.processor.apply_chat_template(messages,tokenize=False,add_generation_prompt=True)
+        memory_phase('processor_start',rgb_shape=list(frames.shape))
+        inputs=self.processor(text=[rendered],videos=[frames],video_metadata=[molmo_metadata(times)],
+                              do_sample_frames=False,return_tensors='pt')
+        # Upstream resizes each original frame identically; this path avoids np.stack/PIL copies.
+        if hasattr(frames._mmap,'madvise'):
+            try:frames._mmap.madvise(mmap.MADV_DONTNEED)
+            except OSError:pass
+        memory_phase('processor_done')
+        return inputs
     def reset_peak(self):
         for i in range(2):self.torch.cuda.synchronize(i);self.torch.cuda.reset_peak_memory_stats(i)
     def measurements(self):
@@ -82,7 +202,7 @@ def select(author,scores,weights,variant):
     return fn(author,scores,weights,variant)
 
 def make_contract(original,manifest,runtime,profile,inventory):
-    return {'schema':'kaggle-ridge-fp16-ablation-v1','platform':'kaggle-T4x2',
+    return {'schema':'kaggle-ridge-fp16-ablation-v2','platform':'kaggle-T4x2',
         'config':{**original['config'],'dtype':'float16'},'resolved_dtype':'float16','hardware':profile,
         'runtime':runtime,'source_sha256':source_fingerprint(),'runner_sha256':file_hash(Path(__file__)),
         'component_script_sha256':file_hash(REPO/'scripts/ridge_component_ablation.py'),
@@ -160,10 +280,12 @@ def run(args):
     from evidencelab.ridge_adapter import load_ridge
     from evidencelab.ridge_weights import RidgeWeightCache,weight_contract
     from evidencelab.aks_adapter import aks_candidates
-    from PIL import Image
     import decord
     output,scratch=args.output.resolve(),args.scratch.resolve();validate_paths(output,scratch)
     output.mkdir(parents=True,exist_ok=True);scratch.mkdir(parents=True,exist_ok=True)
+    filesystem=scratch_filesystem(scratch)
+    if filesystem in {'tmpfs','ramfs'}:raise MemoryError('Kaggle v2 RGB staging requires disk scratch, not tmpfs/RAM')
+    memory_phase('worker_start',scratch_filesystem=filesystem,video_io_profile=VIDEO_IO_PROFILE)
     if shutil.disk_usage(scratch).free<15*1024**3:raise RuntimeError('Need at least 15 GiB free scratch disk before model download')
     bundle=args.bundle.resolve();base,source=bundle/'baseline',bundle/'source'
     cached=components.validate_source(source,base);original=cached['contract']
@@ -191,37 +313,47 @@ def run(args):
             try:
                 (output/'curves').mkdir(exist_ok=True)
                 store.event({'event':'session_start','profile':profile,'mode':args.mode})
+                export(output,contract,store);checkpoint(output,store,target)
                 pending=[q for q in selected if any(q.id+'::'+v not in store.done() for v in VARIANTS)]
                 complete_questions=sum(all(q.id+'::'+v in store.done() for v in VARIANTS) for q in selected)
                 quota=max(0,2-complete_questions) if args.mode=='pilot' else len(pending)
                 if quota:
+                    memory_phase('archive_index_start')
                     source_reader=HTTPRangeSource(stop=stop);reader=MultipartReader(source_reader)
                     members=archive_index(reader,output.parent/'metadata'/'index.json',{q.video for q in pending})
                     reader.clear_cache();reader.block_size=TRANSFER_CHUNK_BYTES
+                    memory_phase('archive_index_done')
                 current=None;processed=0
                 for sample in pending:
                     if stop() or processed>=quota:break
                     if sample.video!=current:
-                        video=None;gc.collect();active.unlink(missing_ok=True)
+                        video=None;release_cpu();active.unlink(missing_ok=True)
                         size=members['videos/'+sample.video][1]
                         if size>8*1024**3 or shutil.disk_usage(scratch).free<size+4*1024**3:
                             raise MemoryError('Insufficient Kaggle scratch disk for bounded active video')
+                        memory_phase('video_download_start',video=sample.video,compressed_bytes=size)
                         sha=fetch_video(reader,members['videos/'+sample.video],active,stop=stop,guard=False)
-                        reader.clear_cache();video=decord.VideoReader(str(active),ctx=decord.cpu(0),num_threads=2);current=sample.video
-                    fps=float(video.get_avg_fps())
-                    if len(video)==0 or not math.isfinite(fps) or fps<=0:raise ValueError('Invalid video FPS/length')
-                    key=components.cache_key(original,sample,sha,aks_candidates(len(video),fps),fps,len(video))
+                        reader.clear_cache();memory_phase('video_metadata_start')
+                        video=decord.VideoReader(str(active),ctx=decord.cpu(0),num_threads=1)
+                        fps=float(video.get_avg_fps());frame_count=len(video)
+                        video=None;release_cpu();current=sample.video
+                        memory_phase('video_metadata_done',fps=fps,total_frames=frame_count)
+                    if frame_count==0 or not math.isfinite(fps) or fps<=0:raise ValueError('Invalid video FPS/length')
+                    key=components.cache_key(original,sample,sha,aks_candidates(frame_count,fps),fps,frame_count)
                     score=components.read_score_cache(source/'scores'/(digest(sample.id)+'.json'),key)
                     if score['sha256']!=cached['inventory'][sample.id]:raise ValueError('Score changed after preflight')
                     def answer(indices,times):
                         backend.reset_peak();begin=time.perf_counter()
-                        images=[Image.fromarray(video[i].asnumpy()).convert('RGB') for i in indices]
-                        decision=backend.answer(sample.public_question(),images,times)
+                        factory=lambda p:decord.VideoReader(str(p),ctx=decord.cpu(0),num_threads=1)
+                        with mapped_rgb_frames(active,indices,scratch/'selected-rgb.bin',factory,stop) as frames:
+                            memory_phase('answer_start')
+                            decision=backend.answer(sample.public_question(),frames,times)
+                        memory_phase('answer_done')
                         return decision,time.perf_counter()-begin,backend.measurements()
                     evaluate_one(sample,score,weight_cache.records[sample.id],author,store,output/'curves'/(digest(sample.id)+'.json'),answer,stop)
                     processed+=1;summary=export(output,contract,store)
                     print(f"Progress {summary['completed_variant_answers']}/{summary['target_variant_answers']}",flush=True)
-                    if processed%5==0:checkpoint(output,store,target)
+                    checkpoint(output,store,target)
             except InterruptedError:
                 store.event({'event':'controlled_stop','signals':stopped})
             finally:

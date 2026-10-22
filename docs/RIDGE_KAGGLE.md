@@ -1,6 +1,6 @@
 # RIDGE cached ablation on Kaggle T4 x2
 
-This is a **new FP16 experiment**, with Molmo2 weights sharded across both T4 GPUs using Accelerate's `balanced` mapping. It is not a continuation of the BF16 A100 school run. The 376 existing school answers remain in their original run; finish the remaining 24 on the school server if completing that experiment.
+This is a **new FP16 v2 experiment**, with Molmo2 weights sharded across both T4 GPUs using Accelerate's `balanced` mapping. It uses a separate v2 output and contract; v1 Kaggle and BF16 A100 answer journals remain separate. The 376 existing school answers remain in their original run; finish the remaining 24 on the school server if completing that experiment.
 
 The provided importable notebook is `outputs/ridge-kaggle-v1/RIDGE_Kaggle_T4x2.ipynb` in the local workspace, accompanied by `ridge-kaggle-input.zip`. The current ZIP contains approximately 7.2 MB of code, author selection source, baseline metadata, precomputed BLIP scores, cached Qwen preference weights and an archive-safe vocabulary copy. It contains no video bytes, answer model weights or credentials. Upload it to a **private** Kaggle Dataset and attach that Dataset to the notebook. No upload has been performed by the assistant. Older 5.9 MB bundles remain supported.
 
@@ -13,6 +13,16 @@ The provided importable notebook is `outputs/ridge-kaggle-v1/RIDGE_Kaggle_T4x2.i
 5. Run the cells in order. The notebook kernel may use a newer Python version: uv 0.8.22 downloads a separate Python 3.12.11 and creates `/kaggle/temp/ridge-v1/venv-py312-v2`. That worker environment installs Torch 2.8.0 with CUDA 12.6 and the existing pinned Molmo requirements. The notebook kernel and its packages remain unchanged. Internet access is required for the Python download as well as dependencies.
 
 The first cell prints GPU names and checks the input ZIP's hashes. The preflight validates all 200 source caches and historical baseline consistency. The backend then verifies two T4 GPUs and native FP16 CUDA operations. CPU/disk weight offload is not accepted by this profile; videos and model downloads use Kaggle's temporary disk, separately from saved results.
+
+The notebook carries a hash-checked copy of the v2 runner. After verifying all input bundle files, it installs that runner in the working copy. Existing input Datasets can therefore be reused without uploading code again. The actual runner hash and video I/O profile participate in the v2 resume contract.
+
+## Host RAM during video processing
+
+The initial port retained 64 original-resolution PIL images and then built another large array with `np.stack`. A Kaggle session was reported killed for host memory after model load; the precise failing native allocation was not captured. These duplicate RGB buffers are a concrete source of avoidable peak RAM.
+
+Version 2 decodes original RGB frames one at a time into a scratch file, releases the Decord reader, and passes a writable NumPy disk mapping directly to the unchanged native video processor. It keeps all 64 selected frames, original pixel values, timestamps, resizing settings and FP16 scoring. Decoder concurrency is reduced to one thread. The scratch filesystem must not be tmpfs/ramfs. Frame staging requires enough disk space plus a 4 GiB reserve, and may be slower than the original path.
+
+Phase logs record worker RSS and container cgroup usage/headroom when readable. A 1.25 GiB headroom guard stops between allocations and lets the runner save results. It cannot guarantee protection against an abrupt native allocation or platform termination. Disk mappings still use reclaimable page cache; this is not zero-RAM processing. A new pilot is required on T4 x2.
 
 If Dataset processing expands the nested CLIP `.txt.gz` asset, the loader restores its exact bytes from a base64 sidecar in newer bundles. With older bundles, it downloads only that missing asset from the fixed OpenAI CLIP commit `a1d071733d7111c9c014f024669f959182114e33` and requires its original SHA256. All bundle checks still run. The existing input Dataset can therefore be reused; missing score/code files and modified assets are rejected.
 
@@ -41,15 +51,15 @@ No quantization, lower frame budget, silent truncation or precision fallback is 
 Outputs:
 
 ```text
-/kaggle/working/ridge-kaggle-v1/run/summary.json
-/kaggle/working/ridge-kaggle-v1/run/predictions.jsonl
-/kaggle/working/ridge-kaggle-v1/run/results.sqlite3
-/kaggle/working/ridge-kaggle-v1/run/curves/
-/kaggle/working/ridge-kaggle-v1/ridge-kaggle-checkpoint.zip
-/kaggle/working/ridge-kaggle-v1/session.log
+/kaggle/working/ridge-kaggle-v2/run/summary.json
+/kaggle/working/ridge-kaggle-v2/run/predictions.jsonl
+/kaggle/working/ridge-kaggle-v2/run/results.sqlite3
+/kaggle/working/ridge-kaggle-v2/run/curves/
+/kaggle/working/ridge-kaggle-v2/ridge-kaggle-checkpoint.zip
+/kaggle/working/ridge-kaggle-v2/session.log
 ```
 
-SQLite commits each variant independently. Human-readable exports update after each question and on worker exit; a transaction-consistent ZIP updates every five questions and on worker exit. The ZIP contains the answer journal, contract, curves, exports and archive metadata index when available. It excludes model weights, HF caches, active video files and tokens.
+SQLite commits each variant independently. Human-readable exports and a transaction-consistent ZIP update at run initialization, after every question and on worker exit. The ZIP contains the answer journal, contract, curves, exports and archive metadata index when available. It excludes model weights, HF caches, active video files, RGB scratch mappings and tokens.
 
 The worker defaults to six hours, then stops between variants/questions and exports. This is a worker budget, not a promise the entire experiment fits one session. Kaggle's session limit also includes environment setup and downloads. The notebook's Interrupt handler asks the worker to stop safely; a forced platform termination can prevent the latest export/ZIP even though SQLite has more committed rows.
 
@@ -61,7 +71,7 @@ Completion is `completed_variant_answers=1000`, `complete=true`, and `n=200` for
 
 ## Validation and current limitation
 
-The port has five CPU tests covering separate FP16 contracts, rejection of BF16 answer journals, multi-GPU mapping checks, interrupted per-variant transactions, ZIP restore/resume and rejection of nonfinite answers. The notebook's Python cells and ZIP hashes are checked locally. The pinned Molmo2 source was inspected for its supported split modules and image-feature device transfer. **No real Kaggle/T4 inference has been executed by the assistant.** Pilot results must be checked before interpreting accuracy.
+The port has nine runner tests and four notebook tests covering contracts, hardware mapping, interrupted transactions, restore/resume, finite probabilities, exact staged RGB order, decoder release, cgroup guards and the direct mapped-array processor call. The notebook's Python cells and ZIP hashes are checked locally. An additional CPU check uses the actual Molmo2 video processor from revision `042abfa7a38879a376cec03d949eff0aefaa0600`: 64 synthetic RGB frames of shape 240×426×3 produce bitwise-identical pixel values, pooling indices and grids, with identical irregular timestamps, through both stacked and disk-mapped inputs. It uses CPU Torch 2.8.0 and local NumPy 1.26.4; it does not validate real video decoding, the pinned Kaggle NumPy environment, GPU inference or peak RAM on Kaggle. **No real Kaggle/T4 inference has been executed by the assistant.** Pilot results must be checked before interpreting accuracy.
 
 Primary references checked 22/10/2026:
 
