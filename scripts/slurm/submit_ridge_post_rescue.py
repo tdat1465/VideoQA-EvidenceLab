@@ -1,0 +1,87 @@
+"""One BF16 GPU job; frozen pilot20 or dev200 with at most two local frame swaps."""
+import argparse
+from contextlib import closing
+import getpass
+import json
+import os
+from pathlib import Path
+import sqlite3
+import subprocess
+import sys
+
+from submit import ALLOWED,submission_args
+REPO=Path(__file__).resolve().parents[2]
+sys.path[:0]=[str(REPO/'src'),str(REPO/'scripts')]
+from evidencelab.config import source_fingerprint
+from evidencelab.data import file_hash
+from ridge_post_rescue_ablation import BASE_SOURCE,VARIANTS,PROTOTYPE,validate_source,pilot_manifest
+
+ROOT=Path('/media/lnthanh03/DatHa')
+BASELINE=ROOT/'runs/videoqa/lvb-val-molmo2-ridge64-full-ridge-v1'
+SOURCE=ROOT/'runs/videoqa/lvb-ridge-smoothing-v1-dev200'
+OUTPUT=ROOT/'runs/videoqa/lvb-ridge-postrescue-v1-dev200'
+
+def progress(path):
+    if not path.exists():return set(),False
+    with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        rows=[json.loads(x) for x, in db.execute('SELECT value FROM results')]
+    groups={}
+    for row in rows:
+        if row['variant'] not in VARIANTS:raise ValueError('Foreign result variant')
+        groups.setdefault(row['question_id'],set()).add(row['variant'])
+    complete_ids={q for q,v in groups.items() if v==set(VARIANTS)}
+    return complete_ids,len(rows)==600 and len(complete_ids)==200
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('mode',choices=['pilot20','dev200'])
+    p.add_argument('--node',choices=['any']+sorted(ALLOWED),default='any')
+    action=p.add_mutually_exclusive_group();action.add_argument('--submit',action='store_true');action.add_argument('--test-only',action='store_true')
+    args=p.parse_args()
+    if getpass.getuser()!='lnthanh03' or REPO!=ROOT/'code/VideoQA-EvidenceLab-ridge-v1':p.error('Use lnthanh03 school checkout')
+    if source_fingerprint()!=BASE_SOURCE:p.error('Frozen baseline source changed')
+    subprocess.run(['git','diff','--exit-code','HEAD','--','src','scripts','configs','pyproject.toml','requirements*.txt'],cwd=REPO,check=True,capture_output=True)
+    summary=json.loads((BASELINE/'summary.json').read_text())
+    if not summary['complete'] or summary['completed_count']!=1337:p.error('Require completed RIDGE baseline')
+    cached=validate_source(SOURCE,BASELINE)
+    baseline_rows=[json.loads(line) for line in (BASELINE/'predictions.jsonl').read_text().splitlines() if line.strip()]
+    pilot=pilot_manifest(baseline_rows,cached['contract']['manifest'])
+    if (OUTPUT/'contract.json').exists():
+        old=json.loads((OUTPUT/'contract.json').read_text())
+        expected={'schema':'ridge-post-rescue-ablation-v1','experiment_script_sha256':file_hash(REPO/'scripts/ridge_post_rescue_ablation.py'),
+            'baseline_weights_sha256':file_hash(BASELINE/'ridge-weights.json'),'baseline_predictions_sha256':file_hash(BASELINE/'predictions.jsonl'),
+            'score_source_contract_sha256':file_hash(SOURCE/'contract.json'),'score_source_predictions_sha256':file_hash(SOURCE/'predictions.jsonl'),
+            'score_inventory':cached['inventory'],'pilot20_manifest':pilot,'prototype':PROTOTYPE}
+        if any(old.get(k)!=v for k,v in expected.items()):p.error('Run/source/code changed; do not mix experiments')
+    completed,complete=progress(OUTPUT/'results.sqlite3')
+    scope=set(pilot['ids'] if args.mode=='pilot20' else cached['contract']['manifest']['ids'])
+    if complete or scope<=completed:
+        print('This mode is complete; no job submitted.');return 0
+    queue=subprocess.check_output(['squeue','-h','-u','lnthanh03','-o','%A|%j'],text=True)
+    for line in queue.splitlines():
+        job,name=line.strip().split('|',1)
+        if name in ('ridge-sm','ridge-cmp','ridge-post'):p.error(f'RIDGE job {job} is active; wait before submission')
+    nodes=set(subprocess.check_output(['sinfo','-N','-h','-p','batch','-o','%N'],text=True).split())
+    placement=submission_args(nodes,node=None if args.node=='any' else args.node,memory_gib=90)
+    eligible=sorted(nodes&(ALLOWED if args.node=='any' else {args.node}))
+    env=os.environ.copy()
+    env.update(PERSIST_ROOT=str(ROOT),REPO_ROOT=str(REPO),RUN_DIR=str(OUTPUT),BASELINE_RUN=str(BASELINE),SCORE_CACHE_RUN=str(SOURCE),
+        CONFIG_FILE='configs/lvb_molmo2_ridge64_full.json',EXPERIMENT_MODE=args.mode,MAX_NEW_SAMPLES='0',
+        RESUME=str(int((OUTPUT/'results.sqlite3').exists())))
+    record={'mode':args.mode,'run_dir':str(OUTPUT),'source_cache_read_only':str(SOURCE),'variants':list(VARIANTS),
+        'expected_variant_answers':600,'mode_target_variant_answers':len(scope)*3,'pilot20_manifest':pilot,
+        'completed_mode_questions':len(scope&completed),'gpu_count':1,'memory_gib':90,'node_mode':args.node,
+        'eligible_nodes':eligible,'sbatch_placement_args':placement,'new_blip_calls':0,'new_qwen_calls':0}
+    print(json.dumps(record,indent=2))
+    if not (args.submit or args.test_only):return 0
+    script=str(REPO/'scripts/slurm/ridge_post_rescue_job.sh');(REPO/'logs').mkdir(exist_ok=True)
+    subprocess.run(placement+['--test-only','--chdir='+str(REPO),script],env=env,check=True)
+    if args.test_only:return 0
+    if not env.get('HF_TOKEN'):env['HF_TOKEN']=getpass.getpass('Hugging Face read token (hidden): ')
+    if not env['HF_TOKEN']:p.error('HF_TOKEN is empty')
+    reply=subprocess.check_output(placement+['--parsable','--chdir='+str(REPO),script],env=env,text=True).strip()
+    job=reply.split(';',1)[0];record['job_id']=job
+    (REPO/'logs'/f'ridge-postrescue-{job}.json').write_text(json.dumps(record,indent=2)+'\n')
+    print(f'Submitted one GPU job {job}; expected mode records: {len(scope)*3}');return 0
+
+if __name__=='__main__':raise SystemExit(main())
