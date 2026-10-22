@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=90G
-#SBATCH --time=00:55:00
+#SBATCH --time=2-00:00:00
 #SBATCH --signal=B:USR1@180
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --error=logs/%x-%j.err
@@ -32,9 +32,9 @@ RESUME=${RESUME:-0}
 MAX_NEW_SAMPLES=${MAX_NEW_SAMPLES:-0}
 : "${EXPERIMENT_MODE:?Set pilot20 or dev200}"
 case "$EXPERIMENT_MODE" in pilot20|dev200) ;; *) exit 2;; esac
-SESSION_SECONDS=${POST_RESCUE_SESSION_SECONDS:-3300}
-[[ "$SESSION_SECONDS" =~ ^[0-9]+$ ]] && (( SESSION_SECONDS >= 600 && SESSION_SECONDS <= 3300 )) || {
-  echo 'Post-rescue session must be 10-55 minutes including setup'; exit 2;
+SESSION_SECONDS=${POST_RESCUE_SESSION_SECONDS:-172800}
+[[ "$SESSION_SECONDS" =~ ^[0-9]+$ ]] && (( SESSION_SECONDS >= 600 && SESSION_SECONDS <= 172800 )) || {
+  echo 'Post-rescue total wall time must be 10-2880 minutes including setup'; exit 2;
 }
 PYTHON_BIN=${PYTHON_BIN:-/usr/bin/python3}
 RAM_BASE=${RAM_BASE:-/dev/shm}

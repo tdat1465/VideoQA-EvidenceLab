@@ -21,7 +21,7 @@ bash scripts/slurm/run_ridge_post_rescue.sh pilot20 --node any
 squeue -u lnthanh03 -n ridge-post
 ```
 
-Chỉ một job, một GPU được chọn trong gpu01/02/03, 8 CPU và 90 GiB RAM; ba biến thể chạy nối tiếp. Mỗi phiên mặc định tối đa **55 phút tính cả setup**, dành 5 phút cuối để xuất checkpoint và dọn tmpfs. Phần chưa làm được chạy tiếp ở phiên sau, không tự xếp hàng nhiều job. Token HF được hỏi ẩn nếu chưa có trong môi trường terminal server. Không cần thêm job smoke hai câu.
+Chỉ một job, một GPU được chọn trong gpu01/02/03, 8 CPU và 90 GiB RAM; ba biến thể chạy nối tiếp. Thời lượng tối đa mặc định **48 giờ tính cả setup**, dành 5 phút trước giới hạn để xuất checkpoint và dọn tmpfs. Job thoát ngay khi hoàn thành, không giữ GPU hết 48 giờ. Quy định GPU idle 60 phút độc lập với tổng thời lượng job. Token HF được hỏi ẩn nếu chưa có trong môi trường terminal server. Không cần thêm job smoke hai câu.
 
 Pilot gồm 20 câu thuộc 9 video, chọn bằng seed cố định và metadata, không chọn theo đáp án hoặc thành công/thất bại. Mẫu này có 2 câu đổi một frame; hai cấu hình giới hạn 1/2 cho cùng tập frame trong pilot. Vì vậy pilot kiểm tra chạy đúng và tái lập, chưa đánh giá lợi ích hay trường hợp đổi hai frame trên GPU. CPU preview toàn dev200 có 38 câu được đổi frame, trong đó 15 câu đổi hai frame ở post_rescue2.
 
@@ -72,9 +72,9 @@ python3 scripts/slurm/submit_ridge_post_rescue.py dev200 --node any --test-only
 bash scripts/slurm/run_ridge_post_rescue.sh dev200 --node any
 ```
 
-Chỉ launcher, giới hạn thời lượng và log giám sát được đổi; worker chọn frame, contract, precision và cache giữ nguyên nên tiếp tục được journal cũ. Mỗi lệnh chỉ submit một phiên, tối đa 55 phút. Setup vẫn phải tải lại model trong tmpfs và có thể tốn khoảng 30 phút như các phiên đã quan sát; số câu hoàn tất mỗi phiên không cố định. Nếu chưa đủ 600, sau khi job trước đã thoát thì chạy lại lệnh dev200. Không xóa run hoặc sửa SHA trong contract.
+Chỉ launcher, tổng thời lượng và log giám sát được đổi; worker chọn frame, contract, precision và cache giữ nguyên nên tiếp tục được journal cũ. Mỗi lệnh submit một job, mặc định tối đa 48 giờ, thoát khi hoàn thành. Mốc 55 phút tạm đặt ở commit ed250be đã được bỏ vì nhầm lẫn tổng wall time với thời gian GPU idle. Setup vẫn tải model trong tmpfs, khoảng 30 phút ở các phiên đã quan sát; giữ job đủ dài để không phải tải lại chỉ vì mốc 55 phút. Nếu bị dừng khi chưa đủ 600, sau khi job trước đã thoát thì chạy lại lệnh dev200. Không xóa run hoặc sửa SHA trong contract.
 
-Có thể giảm thời lượng bằng `--session-minutes 45` ở cả test-only và launcher. Dải cho phép là 10–55 phút; phiên quá ngắn có thể hết thời gian trước khi nạp model xong. Khi setup không xong, không có đảm bảo phiên sẽ tạo kết quả mới; các kết quả đã commit vẫn được giữ.
+Có thể chủ động chọn tổng wall time bằng `--session-minutes 480` để xin tối đa 8 giờ, hoặc bỏ tùy chọn để dùng mặc định 48 giờ. Dải cho phép là 10–2880 phút; 60 phút là giá trị wall time hợp lệ và không được dùng làm trần theo quy định idle. Giới hạn mới chỉ áp dụng khi submit job mới. Job đã được xin 55 phút không tự đổi thời lượng khi git pull.
 
 Trong run có thêm `gpu-util-JOBID.csv` lấy mẫu các GPU hiện với nvidia-smi mỗi 10 giây, `gpu-context-JOBID.json` ghi UUID CUDA và thông tin GPU do Slurm cấp, cùng `phases-JOBID.log`. Phải ghép UUID trước khi diễn giải index. Đây là log đọc trạng thái, không có tác vụ tạo tải GPU để giữ allocation. Downloader tải các tệp này nếu có; phiên cũ không có vẫn tải được.
 
