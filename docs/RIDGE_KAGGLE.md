@@ -10,7 +10,7 @@ The provided importable notebook is `outputs/ridge-kaggle-v1/RIDGE_Kaggle_T4x2.i
 2. Select **GPU T4 x2** and turn **Internet** on. Both GPUs must remain visible. Availability and quotas depend on the account; inspect the session panel rather than assuming a fixed weekly allowance.
 3. Create a private Kaggle Dataset from `ridge-kaggle-input.zip` and use **Add Input** to attach it. The notebook accepts both the unchanged ZIP and files automatically expanded by Kaggle, finding the bundle manifest under `/kaggle/input`.
 4. Add the existing Hugging Face read token to Kaggle **Secrets** under `HF_TOKEN`, then enable that secret for the notebook. Ensure this HF account has accepted LongVideoBench access conditions. Never paste a token into code or output.
-5. Run the cells in order. The Python version must be 3.10–3.12. An isolated environment under `/kaggle/temp/ridge-v1/venv` installs Torch 2.8.0 with CUDA 12.6 and the existing pinned Molmo requirements. It does not replace the notebook kernel's packages.
+5. Run the cells in order. The notebook kernel may use a newer Python version: uv 0.8.22 downloads a separate Python 3.12.11 and creates `/kaggle/temp/ridge-v1/venv-py312-v2`. That worker environment installs Torch 2.8.0 with CUDA 12.6 and the existing pinned Molmo requirements. The notebook kernel and its packages remain unchanged. Internet access is required for the Python download as well as dependencies.
 
 The first cell prints GPU names and checks the input ZIP's hashes. The preflight validates all 200 source caches and historical baseline consistency. The backend then verifies two T4 GPUs and native FP16 CUDA operations. CPU/disk weight offload is not accepted by this profile; videos and model downloads use Kaggle's temporary disk, separately from saved results.
 
@@ -69,3 +69,4 @@ Primary references checked 22/10/2026:
 - [NVIDIA Kaggle GPU notebook setup](https://docs.nvidia.com/datascience/deployment/26.10/platforms/kaggle/)
 - [Accelerate device-map design](https://huggingface.co/docs/accelerate/concept_guides/big_model_inference)
 - [Molmo2-4B model card](https://huggingface.co/allenai/Molmo2-4B)
+- [uv Python installation](https://docs.astral.sh/uv/guides/install-python/)
