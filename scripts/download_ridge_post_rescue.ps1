@@ -19,6 +19,16 @@ $files = foreach ($name in @('summary.json','contract.json','manifest.json','pre
 if ($LASTEXITCODE -ne 0) { throw "Incomplete exports; logs retained in $logs" }
 & scp -r -p -o StrictHostKeyChecking=yes -o ConnectTimeout=15 "${SshTarget}:${remote}/curves" $local
 if ($LASTEXITCODE -ne 0) { throw "Incomplete curves/scores; exports retained in $local" }
+# Optional for older sessions. Copy telemetry only after existence is checked remotely.
+$telemetry = @(& ssh -o StrictHostKeyChecking=yes -o ConnectTimeout=15 $SshTarget "find '$remote' -maxdepth 1 -type f \( -name 'gpu-util-*.csv' -o -name 'gpu-util-*.err' -o -name 'gpu-context-*.json' -o -name 'phases-*.log' \) -print")
+if ($LASTEXITCODE -ne 0) { throw 'Cannot list session telemetry; exports retained' }
+if ($telemetry.Count -gt 0) {
+    $telemetrySources = foreach ($path in $telemetry) { if ($path.Trim()) { "${SshTarget}:$($path.Trim())" } }
+    if ($telemetrySources) {
+        & scp -p -o StrictHostKeyChecking=yes -o ConnectTimeout=15 @telemetrySources $local
+        if ($LASTEXITCODE -ne 0) { throw 'Incomplete telemetry; predictions and curves retained' }
+    }
+}
 $summary = Get-Content -LiteralPath (Join-Path $local 'summary.json') -Raw | ConvertFrom-Json
 $count = @(Get-Content -LiteralPath (Join-Path $local 'predictions.jsonl') | Where-Object { $_.Trim() }).Count
 if ($count -ne $summary.completed_variant_answers) { throw 'Prediction count does not match summary' }

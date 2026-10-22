@@ -22,7 +22,7 @@ bash scripts/slurm/run_ridge_post_rescue.sh pilot20 --node any
 squeue -u lnthanh03 -n ridge-post
 ```
 
-The test-only command validates the frozen cache and asks Slurm to validate placement; it does not allocate a GPU. The launcher submits exactly one job using one GPU, 8 CPUs and 90 GiB RAM on gpu01/gpu02/gpu03, excluding gpu04. It blocks a duplicate active RIDGE job. Input HF_TOKEN is requested hidden in the server terminal when needed; do not paste it into logs or chat. Heavy libraries, model weights and active videos live only inside allocation tmpfs; Slurm's CUDA_VISIBLE_DEVICES is preserved.
+The test-only command validates the frozen cache and asks Slurm to validate placement; it does not allocate a GPU. The launcher submits exactly one job using one GPU, 8 CPUs and 90 GiB RAM on gpu01/gpu02/gpu03, excluding gpu04. Sessions are bounded to **55 minutes including setup**, with a five-minute export/cleanup margin; remaining work is resumed manually in the same journal. It blocks a duplicate active RIDGE job. Input HF_TOKEN is requested hidden in the server terminal when needed; do not paste it into logs or chat. Heavy libraries, model weights and active videos live only inside allocation tmpfs; Slurm's CUDA_VISIBLE_DEVICES is preserved.
 
 New output: `/media/lnthanh03/DatHa/runs/videoqa/lvb-ridge-postrescue-v1-dev200`. Logs: `logs/ridge-post-JOBID.out`, `.err`, and `logs/ridge-postrescue-JOBID.json`. Existing 400 component results are untouched. One job runs all three variants serially. Sigma1/sigma4 controls are read from the compatible frozen source and reported on the same completed question IDs; they are not rerun.
 
@@ -45,7 +45,7 @@ Before scaling, require 20 sigma2 controls to match baseline frames and choices,
 bash scripts/slurm/run_ridge_post_rescue.sh dev200 --node any
 ```
 
-This continues the same journal, retaining the 60 pilot records and adding 540. Do not change code, thresholds, cache or precision while resuming. Full completion is 600/600 and n=200 per variant. If the method is refined after viewing these results, use a separately versioned run and later evaluate on video-disjoint data not used to choose the method.
+This continues the same journal and fills missing variant records; immediately after pilot, 60 records are retained and 540 remain. Do not change the sampler, thresholds, cache or precision while resuming. Full completion is 600/600 and n=200 per variant. If the method is refined after viewing these results, use a separately versioned run and later evaluate on video-disjoint data not used to choose the method.
 
 ## Download in local PowerShell
 
@@ -57,4 +57,14 @@ The downloader displays both overall 60/600 and pilot20 20/20 completion at pilo
 
 ## Local verification
 
-Four sampler tests cover nested caps, same-bin swaps, no-donor fallback, label-blind whole-video sampling and interrupted transaction resume. Two submission tests cover read-only SQLite progress, one-GPU placement and duplicate blocking. All 200 real score caches are checked: 200 sigma2 selections reproduce baseline exactly; all 400 modified selections satisfy the cap, bin, anchor, uncovered-core and protected-coverage invariants. The source's original frozen validation also passes. No new GPU inference or job submission has been performed by the assistant. Source trace and selection preview live in local `outputs/ridge-postrescue-v1/`.
+Four sampler tests cover nested caps, same-bin swaps, no-donor fallback, label-blind whole-video sampling and interrupted transaction resume. Three submission tests cover read-only SQLite progress, one-GPU placement, default/custom bounded session limits, rejection of sessions at or above 60 minutes, and duplicate blocking. All 200 real score caches are checked: 200 sigma2 selections reproduce baseline exactly; all 400 modified selections satisfy the cap, bin, anchor, uncovered-core and protected-coverage invariants. The source's original frozen validation also passes. Source trace and selection preview live in local `outputs/ridge-postrescue-v1/`.
+
+## Resume after the school idle cancellation
+
+The export for job 79497 contains 238/600 committed results, with 79 complete three-variant questions and one sigma2-only question. All three methods answer 59/79 of the complete common questions correctly. The original 60 pilot records are unchanged, all 238 selection replays match, and three two-swap GPU cases now exist. There are 362 answers left. The worker and experiment contract are unchanged by the scheduling update, so the existing journal remains resumable.
+
+The school reports cancellation after 60 minutes without GPU activity. Previous exports only contain a GPU snapshot taken before model loading; it cannot establish a 60-minute idle interval. Updated launchers request 55-minute allocations and save progress with a five-minute cleanup margin. They submit one session at a time, without automatic resubmission. Model downloads still occur in allocation tmpfs on each session. Run the dev200 command again only after the previous session ends, until 600/600. An optional `--session-minutes 45` lowers the limit; 10-55 minutes is permitted, but a short session may end before setup finishes.
+
+Per-session files `gpu-util-JOBID.csv`, `gpu-context-JOBID.json`, and `phases-JOBID.log` provide read-only utilization samples, the CUDA GPU UUID/Slurm assignment, and phase timestamps. Samples cover the GPUs visible to nvidia-smi; correlate UUID before interpreting physical and logical indices. No dummy compute is used to maintain an allocation. The downloader retrieves these files when present, including for older runs without telemetry.
+
+Implementation references: [Slurm sbatch](https://slurm.schedmd.com/sbatch.html) and [NVIDIA nvidia-smi](https://docs.nvidia.com/deploy/nvidia-smi/index.html). The school-specific idle policy is supplied by the user, not inferred from these documents.

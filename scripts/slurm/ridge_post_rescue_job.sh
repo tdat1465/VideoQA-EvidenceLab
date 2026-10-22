@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=90G
-#SBATCH --time=2-00:00:00
+#SBATCH --time=00:55:00
 #SBATCH --signal=B:USR1@180
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --error=logs/%x-%j.err
@@ -32,6 +32,10 @@ RESUME=${RESUME:-0}
 MAX_NEW_SAMPLES=${MAX_NEW_SAMPLES:-0}
 : "${EXPERIMENT_MODE:?Set pilot20 or dev200}"
 case "$EXPERIMENT_MODE" in pilot20|dev200) ;; *) exit 2;; esac
+SESSION_SECONDS=${POST_RESCUE_SESSION_SECONDS:-3300}
+[[ "$SESSION_SECONDS" =~ ^[0-9]+$ ]] && (( SESSION_SECONDS >= 600 && SESSION_SECONDS <= 3300 )) || {
+  echo 'Post-rescue session must be 10-55 minutes including setup'; exit 2;
+}
 PYTHON_BIN=${PYTHON_BIN:-/usr/bin/python3}
 RAM_BASE=${RAM_BASE:-/dev/shm}
 TORCH_INDEX=${TORCH_INDEX:-https://download.pytorch.org/whl/cu126}
@@ -60,9 +64,14 @@ fi
 
 TASK_RAM=$(mktemp -d "$RAM_BASE/videoqa.${SLURM_JOB_ID}.XXXXXX")
 child=''
+monitor_pid=''
 child_signal=TERM
 stop_requested=0
 cleanup() {
+  if [[ -n "$monitor_pid" ]]; then
+    kill "$monitor_pid" 2>/dev/null || true
+    wait "$monitor_pid" 2>/dev/null || true
+  fi
   # TASK_RAM is the exact mktemp directory, not a user-supplied cleanup target.
   case "$TASK_RAM" in "$RAM_BASE"/videoqa."$SLURM_JOB_ID".*) rm -rf -- "$TASK_RAM";; esac
 }
@@ -88,6 +97,15 @@ run_child() {
 }
 trap cleanup EXIT
 trap request_stop USR1 TERM INT
+PHASE_LOG="$RUN_DIR/phases-${SLURM_JOB_ID}.log"
+phase() { printf '%s elapsed_seconds=%s phase=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SECONDS" "$1" >> "$PHASE_LOG"; }
+phase allocation_setup
+# Read-only samples of GPUs visible to nvidia-smi. Correlate with gpu-context UUID;
+# do not assume its physical index equals CUDA's logical index. No compute keepalive.
+nvidia-smi --query-gpu=timestamp,index,uuid,pci.bus_id,utilization.gpu,memory.used \
+  --format=csv --loop=10 > "$RUN_DIR/gpu-util-${SLURM_JOB_ID}.csv" \
+  2> "$RUN_DIR/gpu-util-${SLURM_JOB_ID}.err" &
+monitor_pid=$!
 export HF_HOME="$TASK_RAM/hf" XDG_CACHE_HOME="$TASK_RAM/cache" TMPDIR="$TASK_RAM/tmp"
 export HF_HUB_CACHE="$TASK_RAM/hf/hub" HUGGINGFACE_HUB_CACHE="$TASK_RAM/hf/hub"
 export HF_MODULES_CACHE="$TASK_RAM/hf/modules" HF_DATASETS_CACHE="$TASK_RAM/hf/datasets"
@@ -119,10 +137,12 @@ case "$BACKEND" in
 esac
 "$PYTHON_BIN" -m venv "$TASK_RAM/venv"
 PY="$TASK_RAM/venv/bin/python"
+phase install_runtime
 run_child "$PY" -m pip install --no-cache-dir 'pip==25.2' 'setuptools==80.9.0' 'wheel==0.45.1'
 run_child "$PY" -m pip install --no-cache-dir 'requests==2.32.5' 'huggingface-hub==0.35.3'
 # Fail on missing dataset authorization/range support before downloading Torch or weights.
 run_child "$PY" -m evidencelab.longvideo prepare --config "$TASK_RAM/config.json" --ram-root "$TASK_RAM/data"
+phase install_torch_and_dependencies
 run_child "$PY" -m pip install --no-cache-dir 'torch==2.8.0' 'torchvision==0.23.0' --index-url "$TORCH_INDEX"
 run_child "$PY" -m pip install --no-cache-dir -r "$TASK_RAM/repo/$REQUIREMENTS"
 run_child "$PY" -m pip install --no-build-isolation --no-deps -e "$TASK_RAM/repo"
@@ -135,22 +155,35 @@ run_child "$PY" "$TASK_RAM/repo/scripts/check_longvideo_dependencies.py"
 "$PY" -m evidencelab.longvideo doctor --config "$TASK_RAM/config.json"
 "$PY" -m pip freeze > "$RUN_DIR/environment.latest.txt"
 nvidia-smi > "$RUN_DIR/gpu.latest.txt"
+# Metadata only; this records the allocated CUDA GPU identity, not a workload.
+"$PY" - "$RUN_DIR/gpu-context-${SLURM_JOB_ID}.json" <<'PY'
+import json,os,sys,torch
+from pathlib import Path
+props=torch.cuda.get_device_properties(0)
+record={k:os.environ.get(k) for k in ('SLURM_JOB_ID','SLURM_JOB_GPUS','SLURM_STEP_GPUS','CUDA_VISIBLE_DEVICES')}
+record.update(cuda_visible_count=torch.cuda.device_count(),logical_cuda_index=0,
+              gpu_name=props.name,gpu_uuid=str(getattr(props,'uuid','unavailable')),
+              telemetry_scope='All GPUs visible to nvidia-smi; match CUDA UUID before interpreting utilization.')
+Path(sys.argv[1]).write_text(json.dumps(record,indent=2)+'\n')
+PY
 (( stop_requested == 0 )) || exit 75
 # Capture the exact inputs used by this session; SQLite remains the resume authority.
 cp "$TASK_RAM/config.json" "$RUN_DIR/config.latest.json"
 # One small persistent header index is shared across jobs; video bytes never are.
 : "${PERSIST_ROOT:?Set /media/lnthanh03/DatHa}"
 INDEX_FILE="$PERSIST_ROOT/metadata/longvideobench/60d1c89c1919a198b73be39c2babb213b29d6a5c/index.json"
-# Setup/download time also consumes the 48h allocation. Leave five minutes for cleanup.
+# The full session, including downloads, is bounded. Leave five minutes for export/cleanup.
 ELAPSED=$SECONDS
-REMAINING=$((172800 - ELAPSED - 300))
+REMAINING=$((SESSION_SECONDS - ELAPSED - 300))
 (( REMAINING > 0 )) || exit 75
+phase worker_start_model_setup_and_inference
 args=(--mode "$EXPERIMENT_MODE" --config "$TASK_RAM/config.json" --annotations "$TASK_RAM/data/lvb_val.json"
   --source-cache "$SCORE_CACHE_RUN" --baseline "$BASELINE_RUN" --ram-root "$TASK_RAM/data" --output "$RUN_DIR" --index "$INDEX_FILE"
   --max-seconds "$REMAINING" --max-new-questions "$MAX_NEW_SAMPLES")
 child_signal=USR1
 status=0
 run_child "$PY" "$TASK_RAM/repo/scripts/ridge_post_rescue_ablation.py" "${args[@]}" || status=$?
+phase worker_exited
 if [[ "$status" = 75 ]]; then
   echo 'Post-rescue session stopped cleanly; resume the same mode/output.'
 elif [[ "$status" != 0 ]]; then

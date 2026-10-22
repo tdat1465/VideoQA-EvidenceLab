@@ -30,8 +30,10 @@ class PostSubmissionTests(unittest.TestCase):
     if command[0]=='squeue':return queue[0]
     if command[0]=='sinfo':return 'gpu01\ngpu02\ngpu03\ngpu04\n'
     if command[0]=='sbatch':
+     self.assertEqual(kwargs['env']['POST_RESCUE_SESSION_SECONDS'],str(session_minutes[0]*60))
      self.assertEqual(kwargs['env']['EXPERIMENT_MODE'],'pilot20');return '54321\n'
     raise AssertionError(command)
+   session_minutes=[55]
    patches=[patch.object(mod,'ROOT',root),patch.object(mod,'REPO',repo),patch.object(mod,'BASELINE',base),
     patch.object(mod,'SOURCE',root/'source'),patch.object(mod,'OUTPUT',root/'output'),
     patch.object(mod,'source_fingerprint',return_value=mod.BASE_SOURCE),
@@ -43,12 +45,25 @@ class PostSubmissionTests(unittest.TestCase):
     for p in patches:stack.enter_context(p)
     self.assertEqual(mod.main(),0)
     jobs=[c for c in calls if c[0]=='sbatch'];self.assertEqual(len(jobs),1)
-    for flag in ['--nodes=1','--gres=gpu:1','--mem=90G','--exclude=gpu04']:self.assertIn(flag,jobs[0])
+    for flag in ['--nodes=1','--gres=gpu:1','--mem=90G','--exclude=gpu04','--time=00:55:00']:self.assertIn(flag,jobs[0])
+    self.assertEqual(sum(x.startswith('--time=') for x in jobs[0]),1)
     record=json.loads((repo/'logs/ridge-postrescue-54321.json').read_text())
     self.assertEqual(record['mode_target_variant_answers'],60);self.assertEqual(record['expected_variant_answers'],600)
     self.assertEqual(record['eligible_nodes'],['gpu01','gpu02','gpu03'])
+    self.assertEqual(record['session_minutes'],55)
+    calls.clear();session_minutes[0]=45
+    with patch.object(sys,'argv',['submit','pilot20','--session-minutes','45','--submit']):
+     self.assertEqual(mod.main(),0)
+    jobs=[c for c in calls if c[0]=='sbatch'];self.assertEqual(len(jobs),1)
+    self.assertIn('--time=00:45:00',jobs[0]);self.assertNotIn('--time=00:55:00',jobs[0])
     calls.clear();queue[0]='54321|ridge-post\n'
     with self.assertRaises(SystemExit):mod.main()
     self.assertFalse(any(c[0]=='sbatch' for c in calls))
+
+ def test_rejects_sessions_at_or_above_school_idle_limit(self):
+  for minutes in ('0','60','2880'):
+   with patch.object(sys,'argv',['submit','dev200','--session-minutes',minutes]),patch.object(mod.subprocess,'check_output') as output:
+    with self.assertRaises(SystemExit):mod.main()
+    output.assert_not_called()
 
 if __name__=='__main__':unittest.main()

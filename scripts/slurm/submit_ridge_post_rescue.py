@@ -36,8 +36,11 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('mode',choices=['pilot20','dev200'])
     p.add_argument('--node',choices=['any']+sorted(ALLOWED),default='any')
+    p.add_argument('--session-minutes',type=int,default=55,
+        help='10-55 minutes including setup; release allocation and resume committed work')
     action=p.add_mutually_exclusive_group();action.add_argument('--submit',action='store_true');action.add_argument('--test-only',action='store_true')
     args=p.parse_args()
+    if not 10<=args.session_minutes<=55:p.error('--session-minutes must be 10-55; school idle limit is 60 minutes')
     if getpass.getuser()!='lnthanh03' or REPO!=ROOT/'code/VideoQA-EvidenceLab-ridge-v1':p.error('Use lnthanh03 school checkout')
     if source_fingerprint()!=BASE_SOURCE:p.error('Frozen baseline source changed')
     subprocess.run(['git','diff','--exit-code','HEAD','--','src','scripts','configs','pyproject.toml','requirements*.txt'],cwd=REPO,check=True,capture_output=True)
@@ -63,15 +66,20 @@ def main():
         if name in ('ridge-sm','ridge-cmp','ridge-post'):p.error(f'RIDGE job {job} is active; wait before submission')
     nodes=set(subprocess.check_output(['sinfo','-N','-h','-p','batch','-o','%N'],text=True).split())
     placement=submission_args(nodes,node=None if args.node=='any' else args.node,memory_gib=90)
+    placement=[item for item in placement if not item.startswith('--time=')]
+    placement.append(f'--time=00:{args.session_minutes:02d}:00')
     eligible=sorted(nodes&(ALLOWED if args.node=='any' else {args.node}))
     env=os.environ.copy()
     env.update(PERSIST_ROOT=str(ROOT),REPO_ROOT=str(REPO),RUN_DIR=str(OUTPUT),BASELINE_RUN=str(BASELINE),SCORE_CACHE_RUN=str(SOURCE),
         CONFIG_FILE='configs/lvb_molmo2_ridge64_full.json',EXPERIMENT_MODE=args.mode,MAX_NEW_SAMPLES='0',
+        POST_RESCUE_SESSION_SECONDS=str(args.session_minutes*60),
         RESUME=str(int((OUTPUT/'results.sqlite3').exists())))
     record={'mode':args.mode,'run_dir':str(OUTPUT),'source_cache_read_only':str(SOURCE),'variants':list(VARIANTS),
         'expected_variant_answers':600,'mode_target_variant_answers':len(scope)*3,'pilot20_manifest':pilot,
         'completed_mode_questions':len(scope&completed),'gpu_count':1,'memory_gib':90,'node_mode':args.node,
         'eligible_nodes':eligible,'sbatch_placement_args':placement,'new_blip_calls':0,'new_qwen_calls':0}
+    record.update(session_minutes=args.session_minutes,checkpoint_cleanup_margin_seconds=300,
+        scheduling_only_change=True,frozen_worker_unchanged=True)
     print(json.dumps(record,indent=2))
     if not (args.submit or args.test_only):return 0
     script=str(REPO/'scripts/slurm/ridge_post_rescue_job.sh');(REPO/'logs').mkdir(exist_ok=True)

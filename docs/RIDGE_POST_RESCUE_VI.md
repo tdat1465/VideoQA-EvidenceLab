@@ -21,7 +21,7 @@ bash scripts/slurm/run_ridge_post_rescue.sh pilot20 --node any
 squeue -u lnthanh03 -n ridge-post
 ```
 
-Chỉ một job, một GPU được chọn trong gpu01/02/03, 8 CPU và 90 GiB RAM; ba biến thể chạy nối tiếp. Token HF được hỏi ẩn nếu chưa có trong môi trường terminal server. Không cần thêm job smoke hai câu.
+Chỉ một job, một GPU được chọn trong gpu01/02/03, 8 CPU và 90 GiB RAM; ba biến thể chạy nối tiếp. Mỗi phiên mặc định tối đa **55 phút tính cả setup**, dành 5 phút cuối để xuất checkpoint và dọn tmpfs. Phần chưa làm được chạy tiếp ở phiên sau, không tự xếp hàng nhiều job. Token HF được hỏi ẩn nếu chưa có trong môi trường terminal server. Không cần thêm job smoke hai câu.
 
 Pilot gồm 20 câu thuộc 9 video, chọn bằng seed cố định và metadata, không chọn theo đáp án hoặc thành công/thất bại. Mẫu này có 2 câu đổi một frame; hai cấu hình giới hạn 1/2 cho cùng tập frame trong pilot. Vì vậy pilot kiểm tra chạy đúng và tái lập, chưa đánh giá lợi ích hay trường hợp đổi hai frame trên GPU. CPU preview toàn dev200 có 38 câu được đổi frame, trong đó 15 câu đổi hai frame ở post_rescue2.
 
@@ -55,4 +55,27 @@ Sau khi kiểm tra pilot, nếu tiếp tục dev200:
 bash scripts/slurm/run_ridge_post_rescue.sh dev200 --node any
 ```
 
-Run giữ 60 kết quả pilot và làm tiếp 540 kết quả. Đích cuối 600/600, mỗi biến thể 200 câu. Chưa gửi job thay bạn. Đã kiểm tra CPU, chưa có accuracy GPU của phương pháp mới.
+Lệnh giữ mọi kết quả đã commit và làm phần còn thiếu; nếu mới xong pilot thì còn 540 kết quả. Đích cuối 600/600, mỗi biến thể 200 câu. Trạng thái thực nghiệm mới nhất và cách tiếp tục được ghi ở phần dưới.
+
+## Tiếp tục sau khi job 79497 bị hủy
+
+Bản xuất ngày 22/10 lúc 21:25 có **238/600** kết quả: 79 câu đủ ba biến thể và một câu mới có sigma2. Trên cùng 79 câu, cả ba biến thể đều đúng 59 câu. Không so trực tiếp 59/80 của sigma2 với 59/79 của post-rescue. Có 238/238 replay CPU khớp, các ràng buộc đạt và 60 bản ghi pilot giữ nguyên. Còn **362** kết quả, gồm hai biến thể còn thiếu ở câu dang dở. Ba ca đổi hai frame đã được chạy trên GPU.
+
+Log ghi CANCELLED; theo thông báo của trường, nguyên nhân là GPU không hoạt động trong 60 phút. Gói cũ chỉ có snapshot GPU trước khi nạp model, không có lịch sử utilization nên chưa xác nhận được khoảng idle hoặc GPU UUID trường đã theo dõi. Snapshot 0% không đại diện cho toàn phiên đã tạo 178 kết quả mới.
+
+Sau khi cập nhật code, chạy:
+
+```bash
+cd /media/lnthanh03/DatHa/code/VideoQA-EvidenceLab-ridge-v1
+git pull --ff-only https://github.com/tdat1465/VideoQA-EvidenceLab.git codex/ridge-molmo2
+python3 scripts/slurm/submit_ridge_post_rescue.py dev200 --node any --test-only
+bash scripts/slurm/run_ridge_post_rescue.sh dev200 --node any
+```
+
+Chỉ launcher, giới hạn thời lượng và log giám sát được đổi; worker chọn frame, contract, precision và cache giữ nguyên nên tiếp tục được journal cũ. Mỗi lệnh chỉ submit một phiên, tối đa 55 phút. Setup vẫn phải tải lại model trong tmpfs và có thể tốn khoảng 30 phút như các phiên đã quan sát; số câu hoàn tất mỗi phiên không cố định. Nếu chưa đủ 600, sau khi job trước đã thoát thì chạy lại lệnh dev200. Không xóa run hoặc sửa SHA trong contract.
+
+Có thể giảm thời lượng bằng `--session-minutes 45` ở cả test-only và launcher. Dải cho phép là 10–55 phút; phiên quá ngắn có thể hết thời gian trước khi nạp model xong. Khi setup không xong, không có đảm bảo phiên sẽ tạo kết quả mới; các kết quả đã commit vẫn được giữ.
+
+Trong run có thêm `gpu-util-JOBID.csv` lấy mẫu các GPU hiện với nvidia-smi mỗi 10 giây, `gpu-context-JOBID.json` ghi UUID CUDA và thông tin GPU do Slurm cấp, cùng `phases-JOBID.log`. Phải ghép UUID trước khi diễn giải index. Đây là log đọc trạng thái, không có tác vụ tạo tải GPU để giữ allocation. Downloader tải các tệp này nếu có; phiên cũ không có vẫn tải được.
+
+Tài liệu tham chiếu cho tùy chọn triển khai: [Slurm sbatch](https://slurm.schedmd.com/sbatch.html), [NVIDIA nvidia-smi](https://docs.nvidia.com/deploy/nvidia-smi/index.html). Quy định idle 60 phút là thông tin do người dùng cung cấp từ trường, không suy ra từ tài liệu Slurm.
