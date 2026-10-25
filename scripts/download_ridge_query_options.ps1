@@ -39,6 +39,7 @@ function Test-CompleteFile([string]$path, $entry) {
 Write-Host "Continue into: $destinationRoot"
 Write-Host 'Step 1/3: read the server file inventory and SHA256 hashes.'
 Write-Host 'At a password prompt, enter the server password; input is hidden.'
+Write-Host 'This run uses one SSH inventory connection and, if needed, one SFTP transfer connection.'
 $remoteInventoryScript = @'
 from pathlib import Path
 import hashlib, json
@@ -131,27 +132,39 @@ foreach ($entry in $inventory.files) {
 Write-Host "Verified existing: $kept; reused locally: $reused; missing or changed: $($missingFiles.Count)"
 
 Write-Host 'Step 3/3: download only missing or changed files, then verify checksums.'
-# Group by destination directory; at most 30 sources per scp call. scp has no
-# byte-resume, so an incomplete file is fetched again, while complete files skip.
+# scp reconnects for each remote source even in a multi-source invocation.
+# Feed commands to a single interactive-mode SFTP process instead. Do not use
+# -b, which defaults to noninteractive authentication. Passwords stay in the
+# native SSH console prompt; no password is stored or sent through stdin.
 $downloaded = 0
-foreach ($group in @($missingFiles | Group-Object { Split-Path -Parent $_.relative })) {
-    $items = @($group.Group)
-    for ($offset = 0; $offset -lt $items.Count; $offset += 30) {
-        $last = [Math]::Min($offset + 29, $items.Count - 1)
-        $batch = @($items[$offset..$last])
-        $targetDirectory = Split-Path -Parent (Get-CheckedLocalPath $batch[0].relative $destinationRoot)
-        [void](New-Item -ItemType Directory -Path $targetDirectory -Force)
-        $sources = @($batch | ForEach-Object { "${SshTarget}:$($_.remote)" })
-        & scp -p @sshOptions @sources $targetDirectory
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Download interrupted. Complete files are retained; rerun the exact same command to continue.'
+if ($missingFiles.Count -gt 0) {
+    $commands = @()
+    foreach ($entry in $missingFiles) {
+        $targetPath = Get-CheckedLocalPath $entry.relative $destinationRoot
+        [void](New-Item -ItemType Directory -Path (Split-Path -Parent $targetPath) -Force)
+        $sftpLocalPath = $targetPath.Replace('\', '/')
+        if ($sftpLocalPath -match '[\r\n"\x00]') { throw 'Invalid local path for SFTP command.' }
+        $commands += 'get -p "' + $entry.remote + '" "' + $sftpLocalPath + '"'
+    }
+    $commands += 'bye'
+    Write-Host "Requesting $($missingFiles.Count) files in ONE SFTP connection."
+    $previousOutputEncoding = $OutputEncoding
+    try {
+        # Native stdin piping in Windows PowerShell 5.1 otherwise uses ASCII.
+        $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+        $commands | & sftp @sshOptions -o BatchMode=no $SshTarget
+        $transferExit = $LASTEXITCODE
+    } finally {
+        $OutputEncoding = $previousOutputEncoding
+    }
+    if ($transferExit -ne 0) {
+        throw 'Download interrupted. Complete files are retained; rerun the exact same command to continue.'
+    }
+    foreach ($entry in $missingFiles) {
+        if (-not (Test-CompleteFile (Get-CheckedLocalPath $entry.relative $destinationRoot) $entry)) {
+            throw "Missing file or checksum mismatch: $($entry.relative). Existing files are retained; rerun after worker exits."
         }
-        foreach ($entry in $batch) {
-            if (-not (Test-CompleteFile (Get-CheckedLocalPath $entry.relative $destinationRoot) $entry)) {
-                throw "Checksum mismatch for $($entry.relative). Server exports may have changed; rerun after worker exits."
-            }
-            $downloaded++
-        }
+        $downloaded++
     }
 }
 foreach ($entry in $inventory.files) {

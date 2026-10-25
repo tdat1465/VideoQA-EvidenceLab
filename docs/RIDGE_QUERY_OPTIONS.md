@@ -79,7 +79,7 @@ Downloader lấy logs, metadata, telemetry, `curves/` và score có lựa chọn
 powershell -ExecutionPolicy Bypass -File "E:\Codex\Documents\ChatGPT\KLTN\research-ridge\VideoQA-EvidenceLab\scripts\download_ridge_query_options.ps1" -Destination "E:\Codex\Documents\ChatGPT\KLTN\outputs\ridge-query-options-results-YYYYMMDD-HHMMSS"
 ```
 
-Nhập mật khẩu SSH khi được hỏi; script có thể hỏi lại giữa các đợt truyền. Gửi đường dẫn `Da tai vao` để đối chiếu pilot trước khi chạy tiếp. Điểm tăng trên 20 câu chỉ là tín hiệu phát triển, không phải bằng chứng cải tiến đã được xác nhận.
+Downloader dùng một kết nối SSH để đọc inventory và một phiên SFTP để lấy toàn bộ file thiếu. Với xác thực mật khẩu thông thường, có hai lượt hỏi mật khẩu nếu còn file cần tải; không hỏi lại theo từng file. Nhập sai mật khẩu hoặc mất kết nối có thể dẫn tới hỏi lại. Nếu bị ngắt, chạy lại đúng `-Destination` cũ để giữ file đã đủ. Gửi đường dẫn `Da tai vao` để đối chiếu pilot trước khi chạy tiếp. Điểm tăng trên 20 câu chỉ là tín hiệu phát triển, không phải bằng chứng cải tiến đã được xác nhận.
 
 ## Tiếp tục dev200 và resume
 
