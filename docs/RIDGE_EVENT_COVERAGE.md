@@ -1,6 +1,6 @@
 # RIDGE: event decomposition and evidence coverage v1
 
-Development prototype prepared 2026-10-26. **No new GPU results yet.** The earlier question/options experiment is complete and stays read-only. This is a new run, not a continuation of its 400 records.
+Development prototype prepared 2026-10-26. The first GPU pilot stopped at 92 records: 18 questions have all five variants, and a nineteenth has both controls. Both controls reproduced frames and predictions on 19/19 available questions. The user accepted this reviewed partial pilot to continue dev200; this is not evidence of an accuracy improvement. The earlier question/options experiment is complete and stays read-only. This is a new run, not a continuation of its 400 records.
 
 ## Purpose and controls
 
@@ -47,7 +47,7 @@ All variants use the old candidate grid, old question-based Qwen preferences, un
 - Immutable score source: `lvb-ridge-smoothing-v1-dev200`; full baseline: `lvb-val-molmo2-ridge64-full-ridge-v1`.
 - Same fixed dev200 and pilot20 manifests as previous runs. Pilot has 20 questions/100 variant records, including 5 text-eligible questions. Dev200 has 200 questions/1000 records, including 16 text-eligible questions.
 - Offline token preview: 15 event queries/chunks and 15,795 frame-text pairs for pilot20; 69 queries/73 chunks and 90,507 pairs for dev200. These counts are not measured latency or accuracy.
-- Contract pins worker, event helper, frozen scoring helper, source/config/runtime/precision, manifests, old weights and score hashes. Changed code requires a new run version; never delete the old journal to mix settings.
+- Contract pins worker, event helper, frozen scoring helper, source/config/runtime/precision, manifests, old weights and score hashes. Changes to pinned code require a new run version; never delete the old journal to mix settings. Submission-policy changes may resume the same run when all pinned contract hashes still match.
 - SQLite commits every variant. Completed event scores are reused after restart. Interrupted scoring of the active question is redone. The active video/model/runtime are held in tmpfs; only small results/cache metadata persist.
 - Exact ordered-frame matches **within this new run and question** reuse that run's deterministic answer. Such rows record `reused_answer_from`, `answer_inference_performed=false` and zero answer-forward seconds. They are valid variant outcomes, not independent model calls. Original-run answers are used only to check control reproduction, never copied as new answers.
 - Controls stop the run if sigma1/sigma2 frames or predictions differ from frozen references. Same-frame experimental predictions must also match those references.
@@ -94,7 +94,13 @@ After a technically valid pilot, continue the same run:
 bash scripts/slurm/run_ridge_event_coverage.sh dev200 --node any
 ```
 
-The launcher requires the pilot to be complete. The full target is 1000/1000. Repeating the dev200 command resumes committed results without restarting completed questions.
+By default, the launcher requires the pilot to be complete. An explicitly reviewed partial pilot with at least 18 complete questions can instead be accepted with:
+
+```bash
+bash scripts/slurm/run_ridge_event_coverage.sh dev200 --node any --accept-partial-pilot
+```
+
+This flag changes only the submission prerequisite. It records the pilot completion count and acceptance in the job metadata, retains every source/contract/control check, and resumes the existing SQLite journal. The full target is 1000/1000, including the missing pilot records. From the audited 92-record snapshot, 908 records remain; this is not the number of independent answer forwards. Repeating the same dev200 command resumes committed results without restarting completed variants. Worker, selector, thresholds, manifest, model, and frame budget are unchanged.
 
 Download from **Windows PowerShell**, after worker exit:
 

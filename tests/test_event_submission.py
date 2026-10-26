@@ -72,4 +72,62 @@ class PostSubmissionTests(unittest.TestCase):
     with self.assertRaises(SystemExit):mod.main()
     output.assert_not_called()
 
+ def test_dev200_accepts_reviewed_18_question_pilot_and_resumes_existing_journal(self):
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);repo=root/'code/VideoQA-EvidenceLab-ridge-v1';repo.mkdir(parents=True)
+   base=root/'baseline';base.mkdir();output=root/'output';output.mkdir()
+   (base/'summary.json').write_text(json.dumps({'complete':True,'completed_count':1337}))
+   rows=[{'id':f'q{i:03d}','video':f'v{i//2:03d}','ridge_candidate_count':100} for i in range(200)]
+   (base/'predictions.jsonl').write_text('\n'.join(json.dumps(r) for r in rows))
+   manifest={'ids':[r['id'] for r in rows]};pilot=mod.pilot_manifest(rows,manifest)
+   # Match the interrupted export: 18 complete questions and two controls on the next.
+   with sqlite3.connect(output/'results.sqlite3') as db:
+    db.execute('CREATE TABLE results (value TEXT)')
+    records=[{'question_id':q,'variant':v} for q in pilot['ids'][:18] for v in mod.VARIANTS]
+    records.extend({'question_id':pilot['ids'][18],'variant':v} for v in mod.VARIANTS[:2])
+    db.executemany('INSERT INTO results VALUES (?)',[(json.dumps(r),) for r in records])
+   db.close();before=(output/'results.sqlite3').read_bytes();calls=[]
+   def command_output(command,**kwargs):
+    calls.append(command)
+    if command[0]=='squeue':return ''
+    if command[0]=='sinfo':return 'gpu01\ngpu02\ngpu03\ngpu04\n'
+    if command[0]=='sbatch':
+     self.assertEqual(kwargs['env']['EXPERIMENT_MODE'],'dev200')
+     self.assertEqual(kwargs['env']['RESUME'],'1')
+     return '54322\n'
+    raise AssertionError(command)
+   patches=[patch.object(mod,'ROOT',root),patch.object(mod,'REPO',repo),patch.object(mod,'BASELINE',base),
+    patch.object(mod,'SOURCE',root/'source'),patch.object(mod,'OUTPUT',output),
+    patch.object(mod,'source_fingerprint',return_value=mod.BASE_SOURCE),
+    patch.object(mod,'validate_source',return_value={'contract':{'manifest':manifest},'inventory':{}}),
+    patch.object(mod.getpass,'getuser',return_value='lnthanh03'),patch.object(mod.subprocess,'run'),
+    patch.object(mod.subprocess,'check_output',side_effect=command_output),patch.dict(os.environ,{'HF_TOKEN':'test-only-secret'})]
+   with ExitStack() as stack:
+    for p in patches:stack.enter_context(p)
+    with patch.object(sys,'argv',['submit','dev200','--submit']):
+     with self.assertRaises(SystemExit):mod.main()
+    self.assertEqual(calls,[])
+    with patch.object(sys,'argv',['submit','dev200','--accept-partial-pilot','--submit']):
+     self.assertEqual(mod.main(),0)
+    self.assertEqual(len([c for c in calls if c[0]=='sbatch']),1)
+    record=json.loads((repo/'logs/ridge-event-coverage-54322.json').read_text())
+    self.assertEqual(record['mode_target_variant_answers'],1000)
+    self.assertEqual(record['completed_mode_questions'],18)
+    self.assertEqual(record['pilot20_completed_questions'],18)
+    self.assertFalse(record['pilot20_complete']);self.assertTrue(record['partial_pilot_accepted'])
+    self.assertEqual(before,(output/'results.sqlite3').read_bytes())
+    calls.clear()
+    with patch.object(mod,'progress',return_value=(set(pilot['ids'][:17]),False)),patch.object(sys,'argv',['submit','dev200','--accept-partial-pilot','--submit']):
+     with self.assertRaises(SystemExit):mod.main()
+    self.assertEqual(calls,[])
+    with patch.object(mod,'progress',return_value=(set(pilot['ids']),False)),patch.object(sys,'argv',['submit','dev200','--submit']):
+     self.assertEqual(mod.main(),0)
+    record=json.loads((repo/'logs/ridge-event-coverage-54322.json').read_text())
+    self.assertTrue(record['pilot20_complete']);self.assertFalse(record['partial_pilot_accepted'])
+
+ def test_partial_pilot_acceptance_is_only_for_dev200(self):
+  with patch.object(sys,'argv',['submit','pilot20','--accept-partial-pilot']),patch.object(mod.subprocess,'check_output') as output:
+   with self.assertRaises(SystemExit):mod.main()
+   output.assert_not_called()
+
 if __name__=='__main__':unittest.main()

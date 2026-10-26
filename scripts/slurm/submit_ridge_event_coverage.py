@@ -36,10 +36,13 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('mode',choices=['pilot20','dev200'])
     p.add_argument('--node',choices=['any']+sorted(ALLOWED),default='any')
+    p.add_argument('--accept-partial-pilot',action='store_true',
+        help='For dev200 only: accept a reviewed pilot with at least 18 of 20 complete questions')
     p.add_argument('--session-minutes',type=int,default=2880,
         help='Total wall time including setup, 10-2880 minutes; independent of the GPU idle policy')
     action=p.add_mutually_exclusive_group();action.add_argument('--submit',action='store_true');action.add_argument('--test-only',action='store_true')
     args=p.parse_args()
+    if args.accept_partial_pilot and args.mode!='dev200':p.error('--accept-partial-pilot is only valid with dev200')
     if not 10<=args.session_minutes<=2880:p.error('--session-minutes must be 10-2880 (up to 48 hours total wall time)')
     if getpass.getuser()!='lnthanh03' or REPO!=ROOT/'code/VideoQA-EvidenceLab-ridge-v1':p.error('Use lnthanh03 school checkout')
     if source_fingerprint()!=BASE_SOURCE:p.error('Frozen baseline source changed')
@@ -58,8 +61,11 @@ def main():
             'score_inventory':cached['inventory'],'pilot20_manifest':pilot,'prototype':PROTOTYPE}
         if any(old.get(k)!=v for k,v in expected.items()):p.error('Run/source/code changed; do not mix experiments')
     completed,complete=progress(OUTPUT/'results.sqlite3')
-    if args.mode=='dev200' and not set(pilot['ids'])<=completed:
-        p.error('Complete pilot20 before submitting dev200')
+    pilot_completed=len(set(pilot['ids'])&completed)
+    pilot_complete=set(pilot['ids'])<=completed
+    partial_pilot_accepted=args.accept_partial_pilot and not pilot_complete and pilot_completed>=18
+    if args.mode=='dev200' and not (pilot_complete or partial_pilot_accepted):
+        p.error('Complete pilot20 before submitting dev200, or use --accept-partial-pilot after reviewing at least 18 complete pilot questions')
     scope=set(pilot['ids'] if args.mode=='pilot20' else cached['contract']['manifest']['ids'])
     if complete or scope<=completed:
         print('This mode is complete; no job submitted.');return 0
@@ -83,6 +89,8 @@ def main():
     record={'mode':args.mode,'run_dir':str(OUTPUT),'source_cache_read_only':str(SOURCE),'variants':list(VARIANTS),
         'expected_variant_answers':1000,'mode_target_variant_answers':len(scope)*len(VARIANTS),'pilot20_manifest':pilot,
         'completed_mode_questions':len(scope&completed),'gpu_count':1,'memory_gib':90,'node_mode':args.node,
+        'pilot20_completed_questions':pilot_completed,'pilot20_complete':pilot_complete,
+        'partial_pilot_accepted':partial_pilot_accepted,
         'eligible_nodes':eligible,'sbatch_placement_args':placement,'new_blip_scoring':'deduplicated event descriptions for public-text sequence questions','new_qwen_calls':0}
     record.update(session_minutes=args.session_minutes,checkpoint_cleanup_margin_seconds=300,
         scheduling_only_change=False,new_separate_worker=True)
