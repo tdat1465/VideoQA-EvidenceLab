@@ -1,0 +1,38 @@
+[
+  {
+    "file": "molmo2-subtitle/predictions.jsonl",
+    "rows": 4011,
+    "sha256": "2c3dbf0d90b1c71a9183808ff9fc90442755063291219401ba22b61a708c4d52",
+    "source": "ridge-subtitle-pilot/checkpoints-full/LATEST.zip"
+  },
+  {
+    "file": "qwen/predictions.jsonl",
+    "rows": 2674,
+    "sha256": "cf7c3175a88d3809c181657a1107a850f95d34e95d2e466721e262862ede833f",
+    "source": "ridge-backbone64-results\\qwen-complete.zip"
+  },
+  {
+    "file": "llava/predictions.jsonl",
+    "rows": 2674,
+    "sha256": "63d3393a55c6cc8b3dbfe8ead69b29572e4376fefec7b84bfdb06e5acb359a3b",
+    "source": "ridge-backbone64-results\\llava-complete.zip"
+  },
+  {
+    "file": "internvl/predictions.jsonl",
+    "rows": 2674,
+    "sha256": "5ceb994288582caf2d855d4c9eb6da6baa586e77e6df45c22e98441a8bf5ef10",
+    "source": "ridge-internvl64-results\\predictions.jsonl"
+  },
+  {
+    "file": "molmo2-relational/predictions.jsonl",
+    "rows": 5348,
+    "sha256": "ef663fa64ed55031fbea78b12bee6f8f9c87d97aafd91d8c00cbde807777564b",
+    "source": "ridge-relational-w5-v1-results/ridge-relational-w5-v1-complete.zip"
+  },
+  {
+    "file": "molmo2-canonical/predictions.jsonl",
+    "rows": 8022,
+    "sha256": "ab133a12682e71ebc724d830d9d2ee122b9be86ee8b2802f04723aea7ec78908",
+    "source": "ridge-molab-full1337-results-v1/ridge-molab-full1337-complete.zip"
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "questions": 30,
+  "correct": {
+    "eventcover_sigma2": 15,
+    "top1_anchor": 17,
+    "multi_anchor": 17
+  },
+  "comparisons": {
+    "top1_anchor_vs_eventcover_sigma2": {
+      "gains": 4,
+      "losses": 2,
+      "frames_changed": 23
+    },
+    "multi_anchor_vs_eventcover_sigma2": {
+      "gains": 3,
+      "losses": 1,
+      "frames_changed": 23
+    },
+    "multi_anchor_vs_top1_anchor": {
+      "gains": 1,
+      "losses": 1,
+      "frames_changed": 20
+    }
+  }
+}

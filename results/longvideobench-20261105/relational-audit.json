@@ -1,0 +1,41 @@
+{
+  "status": "passed",
+  "archive_sha256": "db2b0be757391e4003ad994041da67b345a0163462bdf992a1d63200f4e321bd",
+  "files_verified": 3467,
+  "journals_verified": 5,
+  "records": 5348,
+  "questions": 1337,
+  "videos": 753,
+  "correct": {
+    "dedup_sigma2": 911,
+    "eventcover_sigma2": 911,
+    "relation_sigma2": 911,
+    "sigma2": 901
+  },
+  "comparisons": {
+    "dedup_sigma2_vs_eventcover_sigma2": {
+      "gains": 0,
+      "losses": 0,
+      "changed_frames": 0,
+      "delta_pp": 0.0,
+      "video_bootstrap_95ci_pp": [
+        0.0,
+        0.0
+      ],
+      "resamples": 10000,
+      "seed": 20261102
+    },
+    "relation_sigma2_vs_dedup_sigma2": {
+      "gains": 0,
+      "losses": 0,
+      "changed_frames": 10,
+      "delta_pp": 0.0,
+      "video_bootstrap_95ci_pp": [
+        0.0,
+        0.0
+      ],
+      "resamples": 10000,
+      "seed": 20261102
+    }
+  }
+}
