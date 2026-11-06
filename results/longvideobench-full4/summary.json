@@ -1,0 +1,68 @@
+{
+  "complete": true,
+  "completed_questions": 1337,
+  "target_questions": 1337,
+  "records": 5348,
+  "arms": {
+    "ridge_sigma2": {
+      "n": 1337,
+      "correct": 901,
+      "accuracy": 67.38967838444279
+    },
+    "eventcover_sigma2": {
+      "n": 1337,
+      "correct": 910,
+      "accuracy": 68.06282722513089
+    },
+    "multi_anchor_v1": {
+      "n": 1337,
+      "correct": 923,
+      "accuracy": 69.03515332834705
+    },
+    "protected_v2": {
+      "n": 1337,
+      "correct": 920,
+      "accuracy": 68.81077038145101
+    }
+  },
+  "protected_v2_vs": {
+    "ridge_sigma2": {
+      "paired_n": 1337,
+      "gains": 33,
+      "losses": 14,
+      "delta_pp": 1.4210919970082274,
+      "video_bootstrap_95ci_pp": [
+        0.456968773800457,
+        2.411499873266795
+      ]
+    },
+    "eventcover_sigma2": {
+      "paired_n": 1337,
+      "gains": 20,
+      "losses": 10,
+      "delta_pp": 0.7479431563201197,
+      "video_bootstrap_95ci_pp": [
+        0.0,
+        1.5625
+      ]
+    },
+    "multi_anchor_v1": {
+      "paired_n": 1337,
+      "gains": 12,
+      "losses": 15,
+      "delta_pp": -0.2243829468960359,
+      "video_bootstrap_95ci_pp": [
+        -0.9818731117824774,
+        0.523168908819133
+      ]
+    }
+  },
+  "fresh_answer_forwards": 2183,
+  "note": "Partial runs are pilot diagnostics. Validation was inspected during development.",
+  "worker_exit_codes": [
+    0,
+    0,
+    0,
+    0
+  ]
+}
